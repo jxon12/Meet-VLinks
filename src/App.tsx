@@ -34,7 +34,7 @@ import {
 
 /* 👉 Supabase */
 import { supabase } from "./lib/supabaseClient";
-import ResetPasswordPage from "./components/ResetPasswordPage"; // 新增
+import ResetPasswordPage from "./auth/ResetPasswordPage"; // 新增
 import { useAuth } from "./auth/AuthContext"; // 使用 recovery 状态
 
 /* ---------------------- Data ---------------------- */
