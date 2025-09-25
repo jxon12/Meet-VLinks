@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8">
+<script>
+  const base = '/Meet-VLinks/';
+  location.replace(
+    base + location.pathname.replace(new RegExp('^' + base), '') + location.search + location.hash
+  );
+</script>
