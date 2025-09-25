@@ -7,6 +7,7 @@ import ChatPhone from "./components/ChatPhone";
 import LoadingVanGogh from "./components/LoadingVanGogh";
 import Security from "./components/Security";
 import FeedbackWidget from "./components/FeedbackWidget";
+import AuthPage from "./auth/AuthPage";
 import LegalModal from "./components/LegalModal";
 import InstallA2HSModal from "./components/InstallA2HSModal";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
@@ -538,6 +539,14 @@ export default function App() {
               setView("lobby");
             }}
           />
+
+      {view === "auth" && (
+  <AuthPage
+    // 可选：forceMode="reset"
+    // 如果你想直接强制进入 reset 模式，可以传这个
+  />
+)}
+
         ) : view === "lobby" ? (
           <div className="fixed inset-0 z-[60] overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-[#061224] via-[#0a1a2f] to-[#02060c]">
