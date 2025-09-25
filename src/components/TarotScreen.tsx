@@ -1,6 +1,6 @@
 // src/components/TarotScreen.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ShieldAlert, RotateCcw } from "lucide-react";
+import { ChevronLeft, ShieldAlert } from "lucide-react";
 
 type Props = {
   onBack: () => void;
@@ -12,9 +12,12 @@ type Props = {
 const MAX = 5;
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 
-/** ----- small local meanings for fallback (short) ----- 
- *  You can expand these to be more poetic / specific.
- */
+/** GitHub raw images base (把 24 張卡片都改用這個來源) */
+const GH_IMAGE_BASE =
+  "https://raw.githubusercontent.com/jxon12/tarot/main";
+const cardSrcById = (id: number) => `${GH_IMAGE_BASE}/${String(id).padStart(2, "0")}.png`;
+
+/** ----- small local meanings for fallback (short) ----- */
 const LOCAL_MEANINGS: Record<number, string> = {
   1: "New beginnings — fresh energy, potential.",
   2: "Partnerships — connections, collaboration.",
@@ -45,14 +48,11 @@ const LOCAL_MEANINGS: Record<number, string> = {
 /** --- helper that creates a short fallback reading from local meanings --- */
 function generateLocalReading(selected: number[], category: string, desc: string) {
   const lines: string[] = [];
-  // short intro
   lines.push(`Category: ${category}`);
   lines.push(`Question: ${desc}`);
   lines.push("");
-  // summary: combine first 3 card meanings
   const picks = selected.map((id) => LOCAL_MEANINGS[id] || "A quiet hint.");
   lines.push(`Reading summary: ${picks.slice(0, 3).join(" / ")}`);
-  // suggestions: derive two practical steps
   lines.push("");
   lines.push("Practical suggestions:");
   lines.push("- Choose one small action you can do today related to the reading.");
@@ -62,7 +62,7 @@ function generateLocalReading(selected: number[], category: string, desc: string
   return lines.join("\n");
 }
 
-/** --- Gemini call (same approach as earlier) --- */
+/** --- Gemini call --- */
 async function callGemini(promptText: string) {
   if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`;
@@ -121,11 +121,11 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
     if (forceSafety) setShowSafety(true);
   }, [forceSafety]);
 
-  // cards 01..24
+  // cards 01..24（改為 GitHub raw）
   const cards = useMemo(() => {
     return Array.from({ length: 24 }).map((_, i) => {
-      const n = (i + 1).toString().padStart(2, "0");
-      return { id: i + 1, src: `/tarot/${n}.png`, alt: `Card ${i + 1}` };
+      const id = i + 1;
+      return { id, src: cardSrcById(id), alt: `Card ${id}` };
     });
   }, []);
 
@@ -159,7 +159,6 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
     setAiResult(null);
     setStep("pick");
 
-    // build prompt
     const prompt = [
       `Category: ${category}`,
       `Question: ${desc}`,
@@ -168,7 +167,6 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
       `Output in English.`,
     ].join("\n\n");
 
-    // attempt with retry/backoff; if fail with quota, fallback immediately
     try {
       let tryCount = 0;
       const maxRetries = 3;
@@ -181,26 +179,21 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
           setAiLoading(false);
           return;
         } catch (e: any) {
-          // check for quota error / 429
           const status = e?.status || (e?.json?.error?.code) || null;
           const msg = e?.message || String(e);
-          // If 429 or resource_exhausted -> fallback
           if (status === 429 || (typeof msg === "string" && /quota|exhausted|429/i.test(msg))) {
-            // find retry info from json if present
             const retryInfo = e?.json?.error?.details?.find((d: any) => d["@type"]?.includes("RetryInfo"));
             const retryDelay = retryInfo?.retryDelay || null;
             const retrySecs = retryDelay ? parseFloat(String(retryDelay).replace(/[^\d.]/g, "")) : null;
             setErrorMsg(
               `Gemini quota exhausted (429). Using local fallback reading. Please check your Google Cloud billing/quotas to restore Gemini.\n${retrySecs ? `Retry recommended in ${retrySecs}s.` : ""}`
             );
-            // fallback local
             const local = generateLocalReading(selected, category, desc);
             setAiResult(local);
             setStep("result");
             setAiLoading(false);
             return;
           }
-          // otherwise exponential backoff for transient errors
           if (tryCount <= maxRetries) {
             const waitMs = Math.pow(2, tryCount) * 700;
             await new Promise((res) => setTimeout(res, waitMs));
@@ -265,7 +258,7 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
             <>
               <div style={{ color: "#bfe9ff", marginBottom: 8 }}>Choose category</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 18 }}>
-                {CATEGORIES.map((c) => (
+                {["Intimate relationship", "Career / study", "Interpersonal", "Self-growth"].map((c) => (
                   <button key={c} onClick={() => { setCategory(c); setStep("describe"); }}
                     style={{
                       padding: 12, borderRadius: 12, background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
@@ -355,7 +348,7 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {selected.map((id, i) => (
                     <div key={id} style={{ width: 84, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.04)" }}>
-                      <img src={`/tarot/${String(id).padStart(2, "0")}.png`} alt={`Card ${id}`} style={{ width: "100%", height: 110, objectFit: "cover" }} />
+                      <img src={cardSrcById(id)} alt={`Card ${id}`} style={{ width: "100%", height: 110, objectFit: "cover" }} />
                       <div style={{ textAlign: "center", padding: 6, color: "#e6f7ff", fontSize: 12 }}>{i + 1}</div>
                     </div>
                   ))}
