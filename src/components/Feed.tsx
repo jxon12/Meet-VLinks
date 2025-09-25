@@ -429,7 +429,7 @@ export default function Feed({
       </div>
 
       {/* list */}
-      <div className="px-4 pb-28 mt-4 max-w-xl mx-auto space-y-4">
+      <div className="px-4 pb-40 mt-4 max-w-xl mx-auto space-y-4">
         {loading ? (
           <div className="text-center text-white/60 py-10">Loading…</div>
         ) : filtered.length === 0 ? (
@@ -469,7 +469,7 @@ export default function Feed({
       )}
 
       {/* bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40">
+      <nav className="fixed left-0 right-0 z-40 bottom-16 md:bottom-6">
         <div className="mx-auto max-w-md px-3">
           <div className="rounded-3xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-lg">
             <div className="h-16 grid grid-cols-5 place-items-center text-white/80">
