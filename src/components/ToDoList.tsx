@@ -1193,7 +1193,7 @@ export default function ToDoList() {
       </div>
 
       {/* bottom nav with pearl */}
-      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
+      <nav className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30">
         <div className="relative mx-auto w-[380px] max-w-[92vw]">
           <div className="rounded-2xl border border-white/12 bg-white/8 backdrop-blur-xl p-2 flex items-center justify-between shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
             <button
