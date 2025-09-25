@@ -8,10 +8,6 @@ import {
   BarChart3,
   Home,
   PieChart,
-  Trash2,
-  Pause,
-  Play,
-  RotateCcw,
   Sparkles,
   MessageSquare,
   Copy,
@@ -21,6 +17,16 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
+
+/* ---------- Supabase client ---------- */
+import { createClient } from "@supabase/supabase-js";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn("[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env");
+}
+export const supabase =
+  SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : (null as any);
 
 /** ============ Types ============ */
 type Priority = "high" | "medium" | "low";
@@ -36,14 +42,13 @@ interface Task {
   createdAt: number;
   completedAt?: number;
 }
-
 interface Course {
   id: string;
   title: string;
   room?: string;
-  day: number; // 1~7 (Mon~Sun)
+  day: number;   // 1~7 (Mon~Sun) — 前端字段
   start: string; // "08:00"
-  end: string; // "10:00"
+  end: string;   // "10:00"
   color: string;
 }
 
@@ -68,7 +73,7 @@ export default function ToDoList() {
   /** tabs: tasks / growth / calendar / assistant */
   const [tab, setTab] = useState<"tasks" | "growth" | "calendar" | "assistant">("tasks");
 
-  /** ------- Tasks -------- */
+  /** ------- Tasks (local) -------- */
   const [tasks, setTasks] = useState<Task[]>(() => {
     const saved = localStorage.getItem("vlinks:tasks");
     return saved ? JSON.parse(saved) : [];
@@ -141,7 +146,6 @@ export default function ToDoList() {
     intervalRef.current = window.setInterval(() => {
       setLeftSec((s) => {
         if (s > 1) return s - 1;
-        // switch
         if (phase === "work") {
           if (rounds > 1) {
             setPhase("break");
@@ -179,7 +183,7 @@ export default function ToDoList() {
       .toString()
       .padStart(2, "0")}`;
 
-  /** ------- Growth (analytics) ------- */
+  /** ------- Growth (analytics from local tasks) ------- */
   const todayStr = new Date().toDateString();
   const completedToday = tasks.filter(
     (t) => t.completedAt && new Date(t.completedAt).toDateString() === todayStr
@@ -206,36 +210,79 @@ export default function ToDoList() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  /** ------- Calendar (editable weekly) ------- */
-  const [courses, setCourses] = useState<Course[]>(() => {
-    const s = localStorage.getItem("vlinks:courses");
-    return s
-      ? JSON.parse(s)
-      : [
-          {
-            id: rid(),
-            title: "C MT1114 Lecture",
-            room: "Lecture Theatre 3",
-            day: 4,
-            start: "08:00",
-            end: "10:00",
-            color: "#61e4ff",
-          },
-          {
-            id: rid(),
-            title: "C CT1114 Lab",
-            room: "Com Lab",
-            day: 1,
-            start: "16:00",
-            end: "18:00",
-            color: "#a2b6ff",
-          },
-        ];
-  });
-  useEffect(
-    () => localStorage.setItem("vlinks:courses", JSON.stringify(courses)),
-    [courses]
-  );
+  /** ------- Calendar (Supabase, uses wday in DB) ------- */
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+
+  // First load from Supabase (fallback seed if empty)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("courses")
+          .select("id,title,room,wday,start_time,end_time,color")
+          .order("wday", { ascending: true })
+          .order("start_time", { ascending: true });
+
+        if (error) throw error;
+
+        if (data && data.length) {
+          setCourses(
+            data.map((r: any) => ({
+              id: r.id,
+              title: r.title,
+              room: r.room ?? "",
+              day: r.wday, // 映射到前端 day
+              start: (r.start_time as string).slice(0, 5),
+              end: (r.end_time as string).slice(0, 5),
+              color: r.color ?? "#a2b6ff",
+            }))
+          );
+        } else {
+          // first-run seed (也推到云端，便于演示)
+          const seed: Course[] = [
+            {
+              id: rid(),
+              title: "C MT1114 Lecture",
+              room: "Lecture Theatre 3",
+              day: 4,
+              start: "08:00",
+              end: "10:00",
+              color: "#61e4ff",
+            },
+            {
+              id: rid(),
+              title: "C CT1114 Lab",
+              room: "Com Lab",
+              day: 1,
+              start: "16:00",
+              end: "18:00",
+              color: "#a2b6ff",
+            },
+          ];
+          setCourses(seed);
+          try {
+            await supabase.from("courses").upsert(
+              seed.map((c) => ({
+                title: c.title,
+                room: c.room || null,
+                wday: c.day, // << DB 字段
+                start_time: c.start + ":00",
+                end_time: c.end + ":00",
+                color: c.color,
+              }))
+            );
+          } catch (e) {
+            console.warn("seed to DB failed:", e);
+          }
+        }
+      } catch (e) {
+        console.warn("load courses failed:", e);
+      } finally {
+        setCoursesLoading(false);
+      }
+    })();
+  }, []);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Course | null>(null);
@@ -267,16 +314,87 @@ export default function ToDoList() {
     setForm(c);
     setEditOpen(true);
   };
-  const saveCourse = () => {
+
+  // SAVE (insert/update via upsert) with optimistic UI + rollback
+  const saveCourse = async () => {
     if (!form.title.trim()) return;
+
+    const payload: any = {
+      title: form.title,
+      room: form.room || null,
+      wday: form.day,                 // 用 DB 的 wday
+      start_time: form.start + ":00",
+      end_time: form.end + ":00",
+      color: form.color || "#a2b6ff",
+    };
+    if (editing?.id) payload.id = editing.id;
+
+    const rollback: Course[] = [...courses];
+
+    // optimistic
     if (editing) {
-      setCourses((cs) => cs.map((c) => (c.id === editing.id ? { ...form, id: editing.id } : c)));
+      setCourses((cs) =>
+        cs.map((c) => (c.id === editing.id ? { ...form, id: editing.id } : c))
+      );
     } else {
-      setCourses((cs) => [...cs, { ...form, id: rid() }]);
+      const tempId = rid();
+      setCourses((cs) => [...cs, { ...form, id: tempId }]);
     }
-    setEditOpen(false);
+
+    try {
+      const { data, error } = await supabase
+        .from("courses")
+        .upsert(payload, { onConflict: "id" })
+        .select("id,title,room,wday,start_time,end_time,color")
+        .single();
+
+      if (error) throw error;
+
+      const saved: Course = {
+        id: data.id,
+        title: data.title,
+        room: data.room ?? "",
+        day: data.wday,
+        start: (data.start_time as string).slice(0, 5),
+        end: (data.end_time as string).slice(0, 5),
+        color: data.color ?? "#a2b6ff",
+      };
+
+      setCourses((cs) => {
+        const idx = cs.findIndex((c) => c.id === (editing ? editing.id : saved.id));
+        if (idx >= 0) {
+          const next = [...cs];
+          next[idx] = saved;
+          return next;
+        }
+        // 替换刚插入的临时行（用独特特征匹配）
+        return cs.map((c) =>
+          c.title === form.title && c.day === form.day && c.start === form.start ? saved : c
+        );
+      });
+    } catch (e) {
+      console.error("saveCourse failed:", e);
+      setCourses(rollback);
+      alert("Save failed.");
+    } finally {
+      setEditOpen(false);
+      setEditing(null);
+    }
   };
-  const deleteCourse = (id: string) => setCourses((cs) => cs.filter((c) => c.id !== id));
+
+  // DELETE (optimistic + rollback)
+  const deleteCourse = async (id: string) => {
+    const backup = [...courses];
+    setCourses((cs) => cs.filter((c) => c.id !== id));
+    try {
+      const { error } = await supabase.from("courses").delete().eq("id", id);
+      if (error) throw error;
+    } catch (e) {
+      console.error("deleteCourse failed:", e);
+      setCourses(backup);
+      alert("Delete failed.");
+    }
+  };
 
   function addHour(t: string, hours: number) {
     const [h, m] = t.split(":").map(Number);
@@ -293,7 +411,7 @@ export default function ToDoList() {
     id: string;
     role: "user" | "assistant";
     content: string;
-    imageUrl?: string; // optional preview for user-side
+    imageUrl?: string;
   };
   const [assistantMsgs, setAssistantMsgs] = useState<ChatMsg[]>(() => {
     const s = localStorage.getItem("vlinks:assistantMsgs");
@@ -312,7 +430,6 @@ export default function ToDoList() {
     url: string;
   } | null>(null);
 
-  // helpers
   const pushMsg = (role: "user" | "assistant", content: string, imageUrl?: string) =>
     setAssistantMsgs((list) => [...list, { id: rid(), role, content, imageUrl }]);
 
@@ -331,11 +448,9 @@ export default function ToDoList() {
     });
   }
 
-  // Gemini call (text or vision) — instructed to answer in ENGLISH
   async function callGemini(text: string, image?: { mime: string; b64: string }) {
     if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
-    // Suggest switching to pro if you want smarter answers:
-    const model = "gemini-1.5-flash"; // or "gemini-1.5-pro"
+    const model = "gemini-1.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
     const parts: any[] = [];
@@ -415,7 +530,7 @@ export default function ToDoList() {
     const SR: any =
       (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const r = new SR();
-    r.lang = "en-US"; // FIXED English recognition
+    r.lang = "en-US";
     r.interimResults = true;
     r.continuous = continuous;
     return r;
@@ -440,31 +555,23 @@ export default function ToDoList() {
       }
       setInterim(combined);
 
-      // Hotword detect — ensure it actually sends
       if (forHotword) {
         const textAllLower = (finalText + combined).toLowerCase();
         if (textAllLower.includes("hey vlinks")) {
-          // Open panel & stop hotword mode
           setVoiceOpen(true);
           setHotwordOn(false);
           stopListening();
 
-          // Extract trailing query in original casing if present
           const originalAll = finalText + combined;
           const idx = originalAll.toLowerCase().indexOf("hey vlinks");
           const afterOriginal =
             idx >= 0 ? originalAll.slice(idx + "hey vlinks".length).trim() : "";
 
           if (afterOriginal) {
-            // Send immediately
             setAssistantInput(afterOriginal);
             setTimeout(() => sendAssistant(), 0);
           } else {
-            // No trailing query → immediately switch to normal capture for next sentence
-            setTimeout(
-              () => startListening({ continuous: false, forHotword: false }),
-              120
-            );
+            setTimeout(() => startListening({ continuous: false, forHotword: false }), 120);
           }
         }
       }
@@ -477,7 +584,6 @@ export default function ToDoList() {
       setListening(false);
 
       if (!wasHotword) {
-        // one-shot capture finished → send whatever we got
         const spoken = (finalText || interim).trim();
         if (spoken) {
           setAssistantInput(spoken);
@@ -485,7 +591,6 @@ export default function ToDoList() {
         }
         setInterim("");
       } else if (hotwordOn) {
-        // keep hotword loop alive
         startListening({ continuous: true, forHotword: true });
       }
     };
@@ -502,7 +607,6 @@ export default function ToDoList() {
     setInterim("");
   }
 
-  // Single-voice TTS: prefer Microsoft Mark (Edge/Windows), else any en-US, else default
   function speak(text: string) {
     if (!("speechSynthesis" in window)) return;
     const u = new SpeechSynthesisUtterance(text);
@@ -526,7 +630,6 @@ export default function ToDoList() {
     u.pitch = 1.0;
     u.volume = 1.0;
 
-    // Edge/Chrome sometimes returns empty list until onvoiceschanged; try to trigger load:
     if (!chosen && window.speechSynthesis.onvoiceschanged) {
       window.speechSynthesis.onvoiceschanged = () => {
         const retry = window.speechSynthesis.getVoices?.() || [];
@@ -550,13 +653,14 @@ export default function ToDoList() {
 
   /** ------- UI ------- */
   return (
-    <div className="theme-pearl min-h-screen text-white pt-16 pb-28 relative overflow-hidden"
+    <div
+      className="theme-pearl min-h-screen text-white pt-16 pb-28 relative overflow-hidden"
       style={{
         background:
           "radial-gradient(1200px 600px at 50% -10%, rgba(147,197,253,0.14), transparent 70%), linear-gradient(180deg, #070a12 0%, #0b172b 55%, #070a12 100%)",
       }}
     >
-      {/* soft blobs / sheen */}
+      {/* soft blobs */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <div className="absolute -top-20 left-1/3 w-96 h-96 rounded-full bg-cyan-300/10 blur-3xl" />
         <div className="absolute bottom-10 right-1/4 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
@@ -691,10 +795,7 @@ export default function ToDoList() {
                   <div className="text-xs text-blue-200/80 mb-2">Completed today</div>
                   <div className="space-y-1">
                     {completedToday.map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center gap-2 text-blue-200/80 text-xs"
-                      >
+                      <div key={t.id} className="flex items-center gap-2 text-blue-200/80 text-xs">
                         <CheckCircle2 className="w-3 h-3 text-[color:var(--brand)]" />
                         <span className="truncate">{t.title}</span>
                       </div>
@@ -806,6 +907,10 @@ export default function ToDoList() {
                 </div>
               </div>
 
+              {coursesLoading && (
+                <div className="text-xs text-blue-300/70 mb-2">Loading from cloud…</div>
+              )}
+
               {/* grid */}
               <div className="min-w-[820px]">
                 <div className="grid" style={{ gridTemplateColumns: `100px repeat(7, 1fr)` }}>
@@ -855,6 +960,28 @@ export default function ToDoList() {
                                     {c.start}–{c.end} · {c.room}
                                   </div>
                                 )}
+                                <div className="mt-1 flex gap-2 text-[10px]">
+                                  <button
+                                    className="px-2 py-0.5 rounded bg-white/10 border border-white/20"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditing(c);
+                                      setForm(c);
+                                      setEditOpen(true);
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="px-2 py-0.5 rounded bg-white/10 border border-white/20"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteCourse(c.id);
+                                      }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               </div>
                             ))}
                         </div>
@@ -863,6 +990,76 @@ export default function ToDoList() {
                   ))}
                 </div>
               </div>
+
+              {/* editor modal */}
+              {editOpen && (
+                <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+                  <div className="w-full max-w-md rounded-2xl bg-[#0e1626] border border-white/15 p-4">
+                    <div className="text-lg font-semibold mb-3">
+                      {editing ? "Edit Course" : "New Course"}
+                    </div>
+                    <div className="space-y-3">
+                      <input
+                        className="w-full h-10 px-3 rounded bg-white/10 border border-white/15"
+                        value={form.title}
+                        onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                        placeholder="Title"
+                      />
+                      <input
+                        className="w-full h-10 px-3 rounded bg-white/10 border border-white/15"
+                        value={form.room}
+                        onChange={(e) => setForm((f) => ({ ...f, room: e.target.value }))}
+                        placeholder="Room"
+                      />
+                      <div className="flex gap-2">
+                        <select
+                          className="flex-1 h-10 px-3 rounded bg-white/10 border border-white/15"
+                          value={form.day}
+                          onChange={(e) => setForm((f) => ({ ...f, day: Number(e.target.value) }))}
+                        >
+                          {days.map((d, i) => (
+                            <option key={d} value={i + 1}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className="h-10 px-3 rounded bg-white/10 border border-white/15"
+                          value={form.start}
+                          onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}
+                          placeholder="08:00"
+                        />
+                        <input
+                          className="h-10 px-3 rounded bg-white/10 border border-white/15"
+                          value={form.end}
+                          onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))}
+                          placeholder="10:00"
+                        />
+                      </div>
+                      <input
+                        className="w-full h-10 px-3 rounded bg-white/10 border border-white/15"
+                        value={form.color}
+                        onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                        placeholder="#a2b6ff"
+                      />
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        className="px-3 py-2 rounded bg-white/10 border border-white/15"
+                        onClick={() => setEditOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-3 py-2 rounded bg-[color:var(--brand)] text-black"
+                        onClick={saveCourse}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -914,15 +1111,9 @@ export default function ToDoList() {
                     }`}
                   >
                     {m.imageUrl && (
-                      <img
-                        src={m.imageUrl}
-                        alt="upload"
-                        className="rounded-lg mb-2 max-w-full"
-                      />
+                      <img src={m.imageUrl} alt="upload" className="rounded-lg mb-2 max-w-full" />
                     )}
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {m.content}
-                    </div>
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</div>
 
                     {m.role === "assistant" && (
                       <div className="flex gap-2 mt-2 text-[11px]">
@@ -991,10 +1182,7 @@ export default function ToDoList() {
                     className="w-10 h-10 rounded object-cover border border-white/10"
                   />
                   Image attached
-                  <button
-                    onClick={() => setAttachData(null)}
-                    className="underline text-blue-100"
-                  >
+                  <button onClick={() => setAttachData(null)} className="underline text-blue-100">
                     Remove
                   </button>
                 </div>
@@ -1004,7 +1192,7 @@ export default function ToDoList() {
         )}
       </div>
 
-      {/* bottom nav with pearl (decorative) */}
+      {/* bottom nav with pearl */}
       <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
         <div className="relative mx-auto w-[380px] max-w-[92vw]">
           <div className="rounded-2xl border border-white/12 bg-white/8 backdrop-blur-xl p-2 flex items-center justify-between shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -1030,7 +1218,7 @@ export default function ToDoList() {
               <BarChart3 className="w-5 h-5 mx-auto" />
             </button>
 
-            {/* Pearl (click to open Voice) */}
+            {/* Pearl */}
             <button
               type="button"
               onClick={() => setVoiceOpen(true)}
@@ -1044,11 +1232,7 @@ export default function ToDoList() {
                   "0 14px 30px rgba(0,0,0,.35), inset -20px -20px 40px rgba(0,0,0,.18), inset 20px 20px 40px rgba(255,255,255,.25)",
                 animation: "pearl-bob 6s ease-in-out infinite",
               }}
-            >
-              {listening && (
-                <span className="absolute inset-0 rounded-full animate-ping bg-cyan-200/30" />
-              )}
-            </button>
+            />
 
             <button
               onClick={() => setTab("calendar")}
@@ -1075,7 +1259,7 @@ export default function ToDoList() {
         </div>
       </nav>
 
-      {/* Voice overlay (iOS glass) */}
+      {/* Voice overlay */}
       {voiceOpen && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="w-full max-w-md rounded-[28px] border border-white/18 bg-[rgba(20,28,45,0.62)] backdrop-blur-2xl shadow-[0_30px_80px_rgba(0,0,0,0.6)] p-4 relative">
@@ -1224,7 +1408,6 @@ export default function ToDoList() {
           50% { transform: translateY(-4px); }
           100% { transform: translateY(0); }
         }
-        /* Autofill on dark bg */
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
         input:-webkit-autofill:focus {
