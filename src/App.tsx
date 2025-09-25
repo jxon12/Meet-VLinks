@@ -225,7 +225,8 @@ export default function App() {
 
   const makeHeroTitle = (s: string) =>
     s === "School" ? "A Calmer Campus Life" : `A Calmer ${s} Life`;
-  const nextAffirm = () => {
+
+    const nextAffirm = () => {
     const idx = Math.floor(Math.random() * AFFIRMS.length);
     setCurrentAffirm(AFFIRMS[idx]);
     setShowAffirm(true);
