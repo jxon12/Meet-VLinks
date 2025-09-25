@@ -263,7 +263,7 @@ export default function App() {
   /* ---------------- Auth actions ---------------- */
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      alert("Please enter email & password 🙂");
+      alert("Hmm where is your email & password? 🙂");
       return;
     }
     setLoginLoading(true);

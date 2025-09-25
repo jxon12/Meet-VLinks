@@ -1,7 +1,3 @@
-// src/components/ToDoList.tsx
-// Elegant Pearl Glass theme + English-only assistant + fixed hotword flow
-// Requires: VITE_GEMINI_API_KEY in your .env
-
 import React, { useEffect, useRef, useState } from "react";
 import {
   PlusCircle,

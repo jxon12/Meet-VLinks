@@ -3,11 +3,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TarotScreen from "./TarotScreen";
 import Game from "./Game";
 import { askGeminiMulti, type BuddyInfo } from "../lib/gemini";
-import Discover, { type Buddy as BuddyType } from "./Discover";
-import {
-  X, Image as Img, Send, ChevronLeft, Sun, Cloud, Moon,
-  Plus, Maximize2, Minimize2
-} from "lucide-react";
+import MusicPlayer from "./MusicPlayer";
+import { X, Image as Img, Send, ChevronLeft, Sun, Cloud, Moon, Plus } from "lucide-react";
 import { buildMomPrompt, PERSONAS } from "../lib/momPrompt";
 import { supabase } from "../lib/supabaseClient";
 
@@ -28,16 +25,8 @@ type BotMsg = { id: number | string; role: "bot" | "me"; text: string };
 type DMRow = { id: string; user_a: string; user_b: string; created_at: string };
 type ProfileLite = { id: string; full_name: string | null; avatar_url: string | null };
 
-type FeedPost = {
-  id: string;
-  author: BuddyType;
-  caption: string;
-  imageUrl?: string;
-  likes: number;
-  liked: boolean;
-  comments: { id: string; user: { name: string; avatar: string }; text: string; ts: number }[];
-  ts: number;
-};
+/* ---- Buddy（from Discover, inlined here） ---- */
+type BuddyType = { id: string; name: string; species: string; avatar: string };
 
 /* ---- Real world DM types ---- */
 type DMContact = { id: string; name: string; avatar: string };
@@ -94,7 +83,7 @@ function wallpaper(mood: Mood): React.CSSProperties {
   };
 }
 
-/* ---- 情緒&安全 ---- */
+/* ---- Emotion & Safety ---- */
 const SAFETY_RE =
   /(suicide|kill\s*myself|self[-\s]?harm|cutting|end\s*it|jump\s*off|die|hang\s*myself|overdose|take\s*my\s*life|自杀|轻生|不想活|想死|割腕|跳楼)/i;
 
@@ -108,23 +97,17 @@ function DETECT_MOOD(text: string): "tired" | "sad" | "angry" | "neutral" {
 }
 
 const REPLIES: Record<string, { tired: string; sad: string; angry: string; neutral: string }> = {
-  skylar: { tired: "慢点来，我在呢～", sad: "抱一下，先不急。", angry: "先立界线，咱慢慢理。", neutral: "我听着，要点子还是先休息？" },
-  louise: { tired: "先打个小点，稳步走。", sad: "给你靠一下，我在。", angry: "别急，先把事拆小。", neutral: "说吧，我来拍板或陪你。" },
-  luther: { tired: "把帆收一收，先靠岸。", sad: "慢起浮，别被压住。", angry: "风大就稳舵，OK？", neutral: "哪一块最想先动？" },
-  joshua: { tired: "省电模式开～先拿个小胜利🙂", sad: "深呼吸，我护你🫶", angry: "先停靠，再KO boss😎", neutral: "要灵感、计划，还是来个梗？" },
+  skylar: { tired: "Go slow, I’m here with you.", sad: "Come here, gentle hug first.", angry: "Let’s set a boundary, then unpack it together.", neutral: "I’m listening—idea or rest first?" },
+  louise: { tired: "Tiny steps, steady wins.", sad: "Lean on me for a bit.", angry: "No rush—shrink the problem first.", neutral: "Spit it out—I’ll back you or keep you company." },
+  luther: { tired: "Reef time—pull the sails a little.", sad: "Rise slowly—don’t get crushed by the wave.", angry: "Heavy wind? Hold the rudder steady.", neutral: "Which part do you want to start on?" },
+  joshua: { tired: "Battery saver ON—go grab a micro-win 🙂", sad: "Deep breath, I got you 🫶", angry: "Dock first, then KO the boss 😎", neutral: "Want sparks, a plan, or a joke?" },
 };
 const GENERIC_REPLY = {
-  tired: "先慢一点，拿个微小动作就好。",
-  sad: "我在，给你一点点靠。",
-  angry: "先稳，再拆小块。",
-  neutral: "我听着，要我提个点子吗？",
+  tired: "Slower is smarter. Pick one tiny action.",
+  sad: "I’m here. You can lean a little.",
+  angry: "Stabilize first; split it smaller.",
+  neutral: "I’m listening—want me to suggest one small move?",
 };
-
-function extractImage(urlish: string | undefined) {
-  if (!urlish) return undefined;
-  const m = urlish.match(/https?:\/\/[^\s)]+/);
-  return m ? m[0] : undefined;
-}
 
 function AvatarIcon({ avatar, className }: { avatar: string; className?: string }) {
   const isUrl = /^https?:\/\//.test(avatar);
@@ -132,21 +115,267 @@ function AvatarIcon({ avatar, className }: { avatar: string; className?: string 
   return <span className={className}>{avatar}</span>;
 }
 
+/* ================== Vcard: chat-style “Subconscious Exploration” ================== */
+
+type VchatMsg =
+  | { id: string | number; role: "bot" | "me"; kind: "text"; text: string }
+  | { id: string | number; role: "bot"; kind: "image"; url: string; title: string };
+
+type PhotoPrompt = { id: string; url: string; title: string; cues: string[] };
+
+const PHOTO_POOL: PhotoPrompt[] = [
+  { id: "sea-dawn", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200", title: "Sea at Dawn",
+    cues: ["What caught your eye first?", "Does anything here symbolize a part of you?", "If anxiety were the tide, is it rising or receding?"] },
+  { id: "forest-path", url: "https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200", title: "Forest Path",
+    cues: ["Where would you walk?", "What could you put down to travel lighter?", "Who might walk alongside you?"] },
+  { id: "window-rain", url: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?q=80&w=1200", title: "Rain on Window",
+    cues: ["What do the droplets remind you of?", "Which window do you wish would open?", "If you wrote one line to yourself, what would it be?"] },
+  { id: "mountain-sun", url: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1200", title: "Ridge Sunrise",
+    cues: ["Where are you—valley or ridge?", "What ‘gear’ do you need right now?", "What’s the smallest next step?"] },
+  { id: "city-night", url: "https://images.unsplash.com/photo-1499914485622-a88fac536970?q=80&w=1200", title: "City Neon",
+    cues: ["Which light feels like yours?", "Do crowds charge or drain you?", "Pause or continue—what do you want?"] },
+  { id: "desk-coffee", url: "https://images.unsplash.com/photo-1519337265831-281ec6cc8514?q=80&w=1200", title: "Desk & Coffee",
+    cues: ["Which item mirrors you now?", "What could be removed to make room?", "Where would you begin?"] },
+  { id: "river-stone", url: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1200", title: "River & Stones",
+    cues: ["What emotion flows like the water?", "What do the stones block?", "If you float downstream, what worries you?"] },
+  { id: "paper-air", url: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?q=80&w=1200", title: "Paper Airplane",
+    cues: ["Who is it addressed to?", "One line you’d write on it?", "Where should it fly?"] },
+];
+
+function pickPhoto(): PhotoPrompt {
+  return PHOTO_POOL[Math.floor(Math.random() * PHOTO_POOL.length)];
+}
+
+function VcardScreen({ onBack }: { onBack: () => void }) {
+  const [msgs, setMsgs] = useState<VchatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [stage, setStage] = useState<"intro"|"offer"|"photo"|"reflect"|"summary">("intro");
+  const [currentPhoto, setCurrentPhoto] = useState<PhotoPrompt | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Greeting + Offer in EN
+    const base = Date.now();
+    setMsgs([
+      { id: base, role: "bot", kind: "text", text: "Hey, I’m here. Let’s steady the ship and check in with your inner weather." },
+      { id: base+1, role: "bot", kind: "text", text: "Would you like a short Subconscious Exploration? I’ll show you an image, guide your reflections, then offer a gentle reading and a tiny next step." },
+    ]);
+    setStage("offer");
+  }, []);
+
+  useEffect(() => { setTimeout(() => bodyRef.current?.scrollTo({ top: 9e9 }), 0); }, [msgs]);
+
+  const pushBot = (m: VchatMsg) => setMsgs(prev => [...prev, m]);
+  const pushBotLines = (lines: string[]) => {
+    const t0 = Date.now();
+    lines.forEach((t, i) => setTimeout(()=>pushBot({ id: t0+i, role:"bot", kind:"text", text:t }), i*420));
+  };
+
+  const startExploration = () => {
+    const photo = pickPhoto();
+    setCurrentPhoto(photo);
+    pushBot({ id: "ph:"+photo.id, role: "bot", kind: "image", url: photo.url, title: photo.title });
+    pushBotLines([
+      `Look at “${photo.title}”.`,
+      `${photo.cues[0]}`,
+      `You might also consider: ${photo.cues[1]}`
+    ]);
+    setStage("photo");
+  };
+
+  const askMoreCues = () => {
+    if (!currentPhoto) return;
+    const cue = currentPhoto.cues[2] || "What is your body sensing right now?";
+    pushBot({ id: Date.now(), role: "bot", kind: "text", text: cue });
+    setStage("reflect");
+  };
+
+  async function sendUser() {
+    const text = input.trim();
+    if (!text) return;
+    const id = Date.now();
+    setMsgs(p => [...p, { id, role: "me", kind: "text", text }]);
+    setInput("");
+
+    if (!currentPhoto) {
+      // Offer stage decision
+      if (/^(ok|yes|sure|start|begin|go|yep|yeah|好的|开始)/i.test(text)) startExploration();
+      else pushBot({ id: id+1, role:"bot", kind:"text", text:"All good. We can just talk about anything on your mind." });
+      return;
+    }
+
+    // With photo -> reading
+    try {
+      const sys = `You are a warm, concrete psychological companion. No diagnosis. Mirror key feelings, use grounded metaphors, and end with a tiny, doable next step. English only.`;
+      const prompt = `
+${sys}
+[Context] I showed the user an image for subconscious exploration.
+[Image Title] ${currentPhoto.title}
+[Sample cues] ${currentPhoto.cues.join(" / ")}
+[User's words about the image]
+"""${text}"""
+[Output rules]
+- 2–3 chat bubbles, concise.
+- Bubble 1: Reflect back the user's key feeling(s) + validation.
+- Bubble 2: Offer a grounded metaphor/interpretation drawn from the image (no fortune-telling).
+- Bubble 3 (optional): One tiny next step doable within 1 minute (start with a verb, concrete).
+`.trim();
+      const chunks = await askGeminiMulti(prompt, { id: "vcard", name: "Vcard", persona: "gentle" } as BuddyInfo);
+      const toSend = (chunks?.length ? chunks.slice(0,3) : [
+        "I hear the mix of caution and hope in what you shared—thanks for trusting me with it.",
+        `If “${currentPhoto.title}” is your inner scene, it’s nudging you to narrow the frame to what’s right under your feet.`,
+        "Tiny step: set a 60-second timer and jot one thing you *can* do today, even if it’s sending a single line to someone."
+      ]);
+      toSend.forEach((t,i)=>pushBot({ id: id+100+i, role:"bot", kind:"text", text:t }));
+      pushBot({ id: id+200, role:"bot", kind:"text", text:"Want another image—or do you prefer to pause here?" });
+      setStage("summary");
+    } catch {
+      pushBotLines([
+        "I got it—it’s complex and valid.",
+        `From “${currentPhoto.title}”, the message might be: don’t solve everything at once—move one pebble in the desired direction.`,
+        "Tiny step: start a three-column note—“Do / Not now / Revisit”—write exactly one item in each."
+      ]);
+      setStage("summary");
+    }
+  }
+
+  const QuickChips = () => {
+    if (stage === "offer") {
+      return (
+        <div className="flex gap-2 px-3">
+          {["Start exploration","Maybe later"].map((t,i)=>(
+            <button key={i} className="winter-chip" onClick={()=> (t==="Start exploration"? startExploration() : pushBot({ id: Date.now(), role:"bot", kind:"text", text:"Got it. What small thing feels most present right now?" }))}>{t}</button>
+          ))}
+        </div>
+      );
+    }
+    if (stage === "photo") {
+      return (
+        <div className="flex gap-2 px-3">
+          <button className="winter-chip" onClick={askMoreCues}>Another prompt</button>
+          <button
+            className="winter-chip"
+            onClick={()=>{
+              const p = pickPhoto();
+              setCurrentPhoto(p);
+              pushBot({ id: "ph:"+p.id, role:"bot", kind:"image", url: p.url, title: p.title });
+              pushBot({ id: Date.now(), role:"bot", kind:"text", text:`Take a look at “${p.title}”. First impression?` });
+            }}
+          >
+            New image
+          </button>
+        </div>
+      );
+    }
+    if (stage === "summary") {
+      return (
+        <div className="flex gap-2 px-3">
+          <button className="winter-chip" onClick={()=>{ setStage("offer"); pushBot({ id: Date.now(), role:"bot", kind:"text", text:"Up for another round?" }); }}>
+            Another round
+          </button>
+          <button className="winter-chip" onClick={()=>onBack()}>Back to Home</button>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="relative w-full h-full winter-page">
+      <div className="relative h-11 flex items-center justify-center winter-topbar">
+        <div className="text-[13px] font-medium tracking-wide">Vcard · Subconscious Exploration</div>
+        <button onClick={onBack} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
+        <button onClick={onBack} className="winter-icon-btn right-2" aria-label="Close"><X className="w-4 h-4" /></button>
+      </div>
+
+      <div ref={bodyRef} className="h-[calc(100%-60px-44px-40px)] overflow-y-auto px-3 py-3 space-y-4 winter-chat-bg">
+        {msgs.map(m=>{
+          if (m.kind==="image") {
+            return (
+              <div key={m.id} className="flex justify-start">
+                <div className="mr-2 w-7 h-7 grid place-items-center rounded-full text-base winter-avatar">🃏</div>
+                <div className="msg-bot" style={{ padding: 8 }}>
+                  <div className="mb-1 text-[12px] opacity-70">Image · {m.title}</div>
+                  <img src={m.url} alt={m.title} style={{ maxWidth: 240, borderRadius: 12, display:"block" }} />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={m.id} className={`flex ${m.role==="me" ? "justify-end" : "justify-start"}`}>
+              {m.role==="bot" && <div className="mr-2 w-7 h-7 grid place-items-center rounded-full text-base winter-avatar">🃏</div>}
+              <div className={m.role==="me" ? "msg-me" : "msg-bot"}>{m.text}</div>
+              {m.role==="me" && <div className="ml-2 w-7 h-7 grid place-items-center rounded-full text-base winter-avatar">🙂</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      <QuickChips />
+
+      <div className="h-[60px] px-2 flex items-center gap-2 winter-inputbar" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        <button className="w-9 h-9 grid place-items-center rounded-full hover:bg-black/5" title="Random image"
+          onClick={()=>{ const p=pickPhoto(); setCurrentPhoto(p); pushBot({ id: "ph:"+p.id, role:"bot", kind:"image", url: p.url, title: p.title }); setStage("photo"); }}>
+          <Img className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
+          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendUser()}
+            placeholder={stage==="offer" ? "Reply: start / later…" : "Share what the image brings up…"}
+            className="w-full h-10 px-3 winter-textfield text-[14px]" />
+        </div>
+        <button onClick={sendUser} className="w-9 h-9 grid place-items-center rounded-full winter-send" aria-label="Send"><Send className="w-4 h-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+/* ================== Safety Net: Resources only (EN) ================== */
+function SafetyNetScreen({ onBack }: { onBack: () => void }) {
+  const RES = [
+    { name: "Befrienders KL", text: "03-7627 2929", href: "tel:0376272929" },
+    { name: "Talian Kasih", text: "15999 / WhatsApp 019-2615999", href: "tel:15999" },
+    { name: "MIASA 24/7 Helpline", text: "1-800-18-0027", href: "tel:1800180027" },
+  ];
+  return (
+    <div className="relative w-full h-full winter-page">
+      <div className="relative h-11 flex items-center justify-center winter-topbar">
+        <div className="text-[13px] font-medium tracking-wide">Safety Net</div>
+        <button onClick={onBack} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
+        <button onClick={onBack} className="winter-icon-btn right-2" aria-label="Close"><X className="w-4 h-4" /></button>
+      </div>
+
+      <div className="h-[calc(100%-44px-40px)] overflow-y-auto p-3 space-y-3">
+        <div className="rounded-2xl p-4 winter-card text-[13px]">
+          You’re not alone. If you’d like to talk to a person, try these lines (for immediate danger, call 999).
+        </div>
+        <div className="rounded-2xl p-4 winter-card space-y-3">
+          {RES.map(r=>(
+            <div key={r.name} className="flex items-center justify-between text-[13px]">
+              <div><strong>{r.name}</strong> · {r.text}</div>
+              <a href={r.href} className="px-2 py-1 rounded-lg winter-chip">Call</a>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------- ChatPhone -------------------- */
 export default function ChatPhone({ open, onClose }: Props) {
-  // 屏幕
+  // Screen
   const [screen, setScreen] = useState<
-    | "lock" | "home"
-    | "vchat" | "chat"
-    | "messages" | "dmchat"
-    | "settings" | "game" | "tarot"
+  | "lock" | "home"
+  | "vchat" | "chat"
+  | "dmchat"
+  | "settings" | "game" | "tarot" | "music"
+  | "vcard" | "safetynet"
   >("lock");
   const [mood, setMood] = useState<Mood>("sunny");
   const [now, setNow] = useState(new Date());
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
 
-  // 假電量
+  // Fake battery
   const [battery, setBattery] = useState(82);
   useEffect(() => {
     if (!open) return;
@@ -155,7 +384,7 @@ export default function ChatPhone({ open, onClose }: Props) {
   }, [open]);
 
   /* ---------- Buddy / Vchat ---------- */
-  const [vchatTab, setvchatTab] = useState<"chats" | "contacts" | "discover" | "me">("chats");
+  const [vchatTab, setvchatTab] = useState<"chats" | "contacts" | "me">("chats");
   const [buddies, setBuddies] = useState<BuddyType[]>(INITIAL_BUDDIES);
   const [currentBuddy, setCurrentBuddy] = useState<BuddyType | null>(null);
   const [messages, setMessages] = useState<Record<string, BotMsg[]>>({
@@ -165,7 +394,7 @@ export default function ChatPhone({ open, onClose }: Props) {
     joshua:   [{ id: 1, role: "bot", text: "Joshua just went online, vibing and ready to turn up the good times! 😎" }],
   });
 
-  /* ---------- Real world Messages (接 Supabase) ---------- */
+  /* ---------- Real world Messages (Supabase) ---------- */
   const [dmContacts, setDmContacts] = useState<DMContact[]>([]);
   const [currentDM, setCurrentDM] = useState<DMContact | null>(null);
   const [dmThreads, setDmThreads] = useState<Record<string, { dmId: string; msgs: ViewMsg[] }>>({});
@@ -182,19 +411,18 @@ export default function ChatPhone({ open, onClose }: Props) {
 
   const peerOf = (dm: DMRow, uid: string) => (dm.user_a === uid ? dm.user_b : dm.user_a);
 
-  // —— 登录后拿我的 id
+  // Get my id after login
   useEffect(() => {
     if (!open) return;
     supabase.auth.getUser().then(({ data }) => setMyId(data.user?.id ?? null));
   }, [open]);
 
-  // —— 拿到 myId 后：初始化收件箱 + 订阅 dms 插入
+  // Inbox + subscribe DMs
   useEffect(() => {
     if (!myId || inboxLoadedRef.current) return;
     inboxLoadedRef.current = true;
     initInbox(myId);
 
-    // 订阅“有人把我包含进来的新 DM”
     const ch = supabase
       .channel(`dms:${myId}`)
       .on("postgres_changes",
@@ -208,12 +436,10 @@ export default function ChatPhone({ open, onClose }: Props) {
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);
 
   async function handleNewDM(dm: DMRow, uid: string) {
     const peerId = peerOf(dm, uid);
-    // 拉对方资料
     const { data: prof } = await supabase
       .from("profiles")
       .select("id, full_name, avatar_url")
@@ -227,25 +453,21 @@ export default function ChatPhone({ open, onClose }: Props) {
     };
     setDmContacts((prev) => (prev.some(c => c.id === contact.id) ? prev : [...prev, contact]));
 
-    // 拉历史
     const history = await fetchDMs(dm.id);
     setDmThreads((prev) => ({
       ...prev,
       [contact.id]: { dmId: dm.id, msgs: history.map((m) => mapDB(m, uid)) },
     }));
 
-    // 订阅此 DM 的消息
     if (!dmUnsubs.current[dm.id]) {
       dmUnsubs.current[dm.id] = subscribeDM(dm.id, (m) => {
         const incoming = mapDB(m, uid);
         setDmThreads((prev) => {
           const cur = prev[contact.id] || { dmId: dm.id, msgs: [] };
           let base = cur.msgs;
-          // 去掉我方临时气泡
           if (incoming.from === "me") {
             base = base.filter(x => !(x.id.startsWith("temp:") && x.from === "me" && x.text === incoming.text));
           }
-          // 防重复
           if (base.some(x => x.id === incoming.id)) return prev;
           return { ...prev, [contact.id]: { dmId: dm.id, msgs: [...base, incoming] } };
         });
@@ -253,7 +475,6 @@ export default function ChatPhone({ open, onClose }: Props) {
     }
   }
 
-  // —— 初始化：加载我参与的所有 DM，建立联系人 + 历史 + 订阅
   async function initInbox(uid: string) {
     const { data: dmList, error } = await supabase
       .from("dms")
@@ -283,18 +504,14 @@ export default function ChatPhone({ open, onClose }: Props) {
       });
     }
 
-    // 为每个会话：拉历史 + 建订阅
     for (const dm of dms) {
       const peer = peerOf(dm, uid);
-
-      // 历史
       const history = await fetchDMs(dm.id);
       setDmThreads((prev) => ({
         ...prev,
         [peer]: { dmId: dm.id, msgs: history.map(m => mapDB(m, uid)) },
       }));
 
-      // 订阅
       if (!dmUnsubs.current[dm.id]) {
         dmUnsubs.current[dm.id] = subscribeDM(dm.id, (m) => {
           const incoming = mapDB(m, uid);
@@ -312,22 +529,18 @@ export default function ChatPhone({ open, onClose }: Props) {
     }
   }
 
-  // —— 从外部（ProfileViewer）打开某个联系人 DM
   async function openDMWith(contact: DMContact) {
     const dm = await getOrCreateDM(contact.id);
 
-    // 拉历史
     const uid = myId || (await supabase.auth.getUser()).data.user?.id || "";
     const history = await fetchDMs(dm.id);
     const viewMsgs = history.map((m) => mapDB(m, uid));
 
-    // 更新状态
     setDmContacts((prev) => (prev.find((c) => c.id === contact.id) ? prev : [...prev, contact]));
     setDmThreads((prev) => ({ ...prev, [contact.id]: { dmId: dm.id, msgs: viewMsgs } }));
     setCurrentDM(contact);
     setScreen("dmchat");
 
-    // 订阅
     if (dmUnsubs.current[dm.id]) { dmUnsubs.current[dm.id]!(); delete dmUnsubs.current[dm.id]; }
     dmUnsubs.current[dm.id] = subscribeDM(dm.id, (m) => {
       const uid2 = myId || (supabase.auth.getUser() as any)?.data?.user?.id || "";
@@ -344,7 +557,6 @@ export default function ChatPhone({ open, onClose }: Props) {
     });
   }
 
-  // —— 接收 ProfileViewer 的事件
   useEffect(() => {
     function onOpenDM(e: Event) {
       const { peerId, peerName, peerAvatar } = (e as CustomEvent).detail || {};
@@ -359,8 +571,6 @@ export default function ChatPhone({ open, onClose }: Props) {
     return () => window.removeEventListener("vlinks:open-dm", onOpenDM as any);
   }, []);
 
-
-  // —— 卸载时清除订阅
   useEffect(() => {
     return () => {
       Object.values(dmUnsubs.current).forEach((off) => off && off());
@@ -368,7 +578,6 @@ export default function ChatPhone({ open, onClose }: Props) {
     };
   }, []);
 
-  // —— 发消息（含乐观气泡 & 去重由订阅回调处理）
   async function sendDM() {
     const text = dmDraft.trim();
     if (!text || !currentDM) return;
@@ -376,13 +585,11 @@ export default function ChatPhone({ open, onClose }: Props) {
     if (!thread) return;
 
     const temp: ViewMsg = { id: "temp:" + Date.now(), from: "me", text, ts: new Date().toISOString() };
-    setDmThreads((prev) => ({ ...prev, [currentDM.id]: { dmId: thread.dmId, msgs: [...(prev[currentDM.id]?.msgs || []), temp] } }));
+    setDmThreads((prev) => ({ ...prev, [currentDM.id]: { dmId: thread.dmId, msgs: [...(prev[currentDM.id]?.msgs || []), temp] }}));
     setDmDraft("");
     try {
       await sendDMMessage(thread.dmId, text);
-      // 真实消息将由 Realtime 推入，并替换临时气泡
     } catch (err) {
-      // 回滚
       setDmThreads((prev) => ({
         ...prev,
         [currentDM.id]: { dmId: thread.dmId, msgs: (prev[currentDM.id]?.msgs || []).filter((m) => m.id !== temp.id) },
@@ -391,30 +598,28 @@ export default function ChatPhone({ open, onClose }: Props) {
     }
   }
 
-  // 你的暱稱/頭像（Buddy 內部用）
   const myName = "User";
   const myAvatar = "🙂";
 
-  // 滚动 & 打字（Buddy）
   const bodyRef = useRef<HTMLDivElement>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // Activity / Safety（buddy 用）
+  // Live Island state (restored)
   const [activityOpen, setActivityOpen] = useState(true);
   const [livePreview, setLivePreview] = useState<null | { buddy: BuddyType; text: string; ts: number }>(null);
+
   const [safetyBanner, setSafetyBanner] = useState<string | null>(null);
   const [forceSafety, setForceSafety] = useState(false);
   const [handoffText, setHandoffText] = useState<string>("");
 
-  // 時鐘 & 自動滾
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(t); }, []);
   useEffect(() => { if (open) setTimeout(() => bodyRef.current?.scrollTo({ top: 9e9 }), 0); },
     [open, screen, currentBuddy, currentDM, messages, dmThreads]);
 
   const MoodIcon = useMemo(() => (mood === "sunny" ? Sun : mood === "cloudy" ? Cloud : Moon), [mood]);
 
-  /* ---------- Buddy：發送 ---------- */
+  /* ---------- Buddy: send ---------- */
   const personaKeyOf = (b: BuddyType): "louise" | "skylar" | "luther" | "joshua" =>
     (["louise", "skylar", "luther", "joshua"].includes(b.id) ? (b.id as any) : "skylar");
 
@@ -423,7 +628,7 @@ export default function ChatPhone({ open, onClose }: Props) {
     lines.forEach((t, i) => {
       setTimeout(() => {
         setMessages((p) => ({ ...p, [buddy.id]: [...(p[buddy.id] || []), { id: base + i, role: "bot", text: t }] }));
-        setLivePreview({ buddy, text: t, ts: base + i });
+        setLivePreview({ buddy, text: t, ts: base + i }); // update Live Island
       }, i * 480);
     });
   };
@@ -437,9 +642,9 @@ export default function ChatPhone({ open, onClose }: Props) {
 
     if (SAFETY_RE.test(text)) {
       setSafetyBanner(
-        "Befrienders KL 03-76272929 • Talian Kasih 15999 / WhatsApp 019-2615999 • Lifeline 1-800-273-8255 — You deserve support; you’re not alone."
+        "Befrienders KL 03-7627 2929 • Talian Kasih 15999 / WhatsApp 019-2615999 • Lifeline 1-800-273-8255 — You deserve support; you’re not alone."
       );
-      pushBotLines(currentBuddy, ["我在。先稳住呼吸 🫶", "要不要给你一个很小很小的下一步？"]);
+      pushBotLines(currentBuddy, ["I’m here. Let’s steady your breath 🫶", "Want a very tiny next step together?"]);
       return;
     }
 
@@ -450,18 +655,18 @@ export default function ChatPhone({ open, onClose }: Props) {
       const sys = buildMomPrompt(myName, pk, "");
       const prompt = `
 ${sys}
-【当前说话者】${currentBuddy.name}（${currentBuddy.species}）
-【任务】用 1~3 个“气泡”回复。若非讨论，偏短句；有必要再给微动作或一个可行选项。
-【对方发言】"""${text}"""
+[Speaker] ${currentBuddy.name} (${currentBuddy.species})
+[Task] Reply in 1–3 bubbles. Prefer short sentences. If useful, propose one tiny actionable option.
+[User said] """${text}"""
 `.trim();
       const chunks = await askGeminiMulti(prompt, { id: currentBuddy.id, name: currentBuddy.name, persona } as BuddyInfo);
-      const toSend = chunks?.length ? chunks.slice(0, 3) : ["收到，我在。", "先从一个最小的点开始好嘛～"];
+      const toSend = chunks?.length ? chunks.slice(0, 3) : ["Got it. I’m here.", "How about one small, doable step first?"];
       pushBotLines(currentBuddy, toSend);
     } catch {
       const moodDetected = DETECT_MOOD(text);
       const pack = REPLIES[currentBuddy.id] || GENERIC_REPLY;
       const baseText = pack[moodDetected] || GENERIC_REPLY.neutral;
-      pushBotLines(currentBuddy, [baseText, "要不要我给你 1 个小点子？"]);
+      pushBotLines(currentBuddy, [baseText, "Want me to suggest one tiny move?"]);
     } finally {
       setIsTyping(false);
     }
@@ -493,7 +698,7 @@ ${sys}
     return () => { el.removeEventListener("mousemove", onMove); el.removeEventListener("mouseleave", onLeave); cancelAnimationFrame(raf); };
   }, []);
 
-  /* ---------- UI：状态栏 ---------- */
+  /* ---------- UI: Status bar ---------- */
   const StatusBar = (
     <div className="absolute left-0 right-0 top-0 h-10 px-3 flex items-center justify-between pointer-events-none select-none"
          style={{ color: mood === "night" ? "#eaf2ff" : "#0a0f18" }}>
@@ -514,7 +719,7 @@ ${sys}
     </div>
   );
 
-  /* ---------- Live Island（buddy 預覽） ---------- */
+  /* ---------- Live Island (restored) ---------- */
   const LiveIsland = (
     <div className="absolute left-1/2 -translate-x-1/2 top-[14px] z-30" title="Live Activity">
       <button onClick={() => setActivityOpen(v => !v)} className="w-[140px] h-[34px] rounded-[22px] winter-island" aria-label="Toggle Live Island" />
@@ -538,69 +743,7 @@ ${sys}
     </div>
   );
 
-  /* ---------- Discover：朋友圈（buddy） ---------- */
-  const [posts, setPosts] = useState<FeedPost[]>(() => {
-    try { const raw = localStorage.getItem("vlinks_feed"); return raw ? JSON.parse(raw) : []; }
-    catch { return []; }
-  });
-  useEffect(() => { try { localStorage.setItem("vlinks_feed", JSON.stringify(posts)); } catch {} }, [posts]);
-
-  useEffect(() => {
-    if (posts.length) return;
-    (async () => {
-      try {
-        const r = await fetch("/data/vlinks-corpus.json");
-        const corpus = await r.json();
-        const entries = corpus?.entries ?? {};
-        const built: FeedPost[] = Object.values(entries)
-          .filter((e: any) => typeof e?.content === "string")
-          .slice(0, 12)
-          .map((e: any, i: number) => {
-            const lines = e.content.split(/\n+/).filter((l: string) => !/文生图|随机/.test(l));
-            const caption = (lines.find((l: string) => l.trim().length > 4) || "今天也要相信小浪花").slice(0, 120);
-            const maybe = extractImage(e.reply || e.desc || e.content);
-            const author = INITIAL_BUDDIES[i % INITIAL_BUDDIES.length];
-            return {
-              id: `cp_${Date.now()}_${i}`,
-              author, caption, imageUrl: maybe,
-              likes: Math.floor(Math.random() * 8) + 1,
-              liked: false, comments: [],
-              ts: Date.now() - Math.floor(Math.random()* 8*3600*1000),
-            };
-          });
-        setPosts(built);
-      } catch {
-        setPosts([
-          { id:"p1", author: INITIAL_BUDDIES[0], caption:"The ocean is so chill today", imageUrl: undefined, likes:3, liked:false, comments:[], ts: Date.now()-3*3600e3 },
-          { id:"p2", author: INITIAL_BUDDIES[1], caption:"Bet, let's lowkey vibe.", imageUrl: undefined, likes:5, liked:false, comments:[], ts: Date.now()-8*3600e3 },
-        ]);
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleAddBuddy = (buddy: BuddyType) => {
-    if (buddies.some(b => b.id === buddy.id)) return;
-    setBuddies(prev => [...prev, buddy]);
-    setMessages(prev => ({
-      ...prev,
-      [buddy.id]: [{ id: Date.now(), role: "bot", text: `Hi, I’m ${buddy.name}! Thanks for following me. Want to chat anytime.` }]
-    }));
-    setLivePreview({ buddy, text: `Thanks for following me!`, ts: Date.now() });
-  };
-  const handleOpenChat = (buddy: BuddyType) => { setCurrentBuddy(buddy); setScreen("chat"); };
-  const handleBuddyDM = (buddy: BuddyType, lines: string[]) => { pushBotLines(buddy, lines); };
-  const handleToggleLike = (postId: string) => {
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked: !p.liked, likes: (p.likes||0) + (p.liked ? -1 : 1)} : p));
-  };
-  async function handleUserComment(postId: string, commentText: string) {
-    const ts = Date.now();
-    setPosts(prev => prev.map(p => p.id === postId
-      ? { ...p, comments: [...p.comments, { id: String(ts), user: { name: myName, avatar: myAvatar }, text: commentText, ts }] }
-      : p));
-  }
-
-  /* ---------- Tabs：Vchat ---------- */
+  /* ---------- Tabs: Vchat ---------- */
   const ContactsTab = (
     <div className="p-3 grid gap-2">
       {buddies.map((b) => (
@@ -639,21 +782,6 @@ ${sys}
       })}
     </div>
   );
-  const DiscoverTab = (
-    <Discover
-      mood={mood}
-      myName={myName}
-      myAvatar={myAvatar}
-      knownBuddies={buddies}
-      posts={posts}
-      setPosts={setPosts}
-      onAddBuddy={handleAddBuddy}
-      onOpenChat={handleOpenChat}
-      onBuddyDM={handleBuddyDM}
-      onUserComment={handleUserComment}
-      onToggleLike={handleToggleLike}
-    />
-  );
   const MeTab = (
     <div className="p-3 space-y-3">
       <div className={`rounded-2xl p-4 flex items-center gap-3 ${mood === 'night' ? 'ocean-card' : 'winter-card'}`}>
@@ -666,12 +794,12 @@ ${sys}
       </div>
       <div className={`rounded-2xl p-4 ${mood === 'night' ? 'ocean-card' : 'winter-card'}`}>
         <div className="text-[13px] font-medium mb-2">Live Island</div>
-        <div className="text-[13px] opacity-80">Tap the island pill on Lock/Home to toggle on/off.（在 vchat 页不会弹预览）</div>
+        <div className="text-[13px] opacity-80">Tap the pill on Home to toggle. (No preview inside the Vchat screen)</div>
       </div>
     </div>
   );
 
-  /* ---------- Screens：Vchat ---------- */
+  /* ---------- Screens: Vchat ---------- */
   const vchatHeader = (
     <div className={`relative h-11 flex items-center justify-center ${mood === "night" ? "ocean-topbar" : "winter-topbar"}`}>
       <div className="text-[13px] font-medium tracking-wide">vchat</div>
@@ -681,10 +809,10 @@ ${sys}
   );
   const vchatTabs = (
     <div className={`h-11 flex items-center justify-around text-[13px] ${mood === "night" ? "ocean-subbar" : "winter-subbar"}`}>
-      {(["chats", "contacts", "discover", "me"] as const).map((t) => (
+      {(["chats", "contacts", "me"] as const).map((t) => (
         <button key={t} onClick={() => setvchatTab(t)}
           className={`px-3 py-1.5 rounded-full ${vchatTab === t ? (mood==='night' ? 'ocean-chip' : 'winter-chip-on') : (mood==='night' ? 'ocean-chip' : 'winter-chip')}`}>
-          {t === "chats" ? "Chats" : t === "contacts" ? "Contacts" : t === "discover" ? "Discover" : "Me"}
+          {t === "chats" ? "Chats" : t === "contacts" ? "Contacts" : "Me"}
         </button>
       ))}
     </div>
@@ -696,11 +824,11 @@ ${sys}
       <div ref={bodyRef} className="h-[calc(100%-88px-40px)] overflow-y-auto">
         {vchatTab === "chats" && <div className="p-3 space-y-2">{ChatsTab}</div>}
         {vchatTab === "contacts" && ContactsTab}
-        {vchatTab === "discover" && DiscoverTab}
         {vchatTab === "me" && MeTab}
       </div>
     </div>
   );
+
   const ChatScreen = currentBuddy && (
     <div className={`relative w-full h-full winter-page ${mood === 'night' ? 'ocean' : ''}`}>
       {StatusBar}
@@ -752,42 +880,7 @@ ${sys}
     </div>
   );
 
-  /* ---------- Screens：Messages（现实私讯，仅 Chats） ---------- */
-  const messagesHeader = (
-    <div className={`relative h-11 flex items-center justify-center ${mood === "night" ? "ocean-topbar" : "winter-topbar"}`}>
-      <div className="text-[13px] font-medium tracking-wide">Messages</div>
-      <button onClick={() => setScreen("home")} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
-      <button onClick={onClose} className="winter-icon-btn right-2" aria-label="Close"><X className="w-4 h-4" /></button>
-    </div>
-  );
-  const messagesList = (
-    <div className={`relative w-full h-full winter-page ${mood === 'night' ? 'ocean' : ''}`}>
-      {StatusBar}
-      {messagesHeader}
-      {/* 去掉 Contacts 分页后的列表高度：只有一个 44px 顶栏 */}
-      <div className="h-[calc(100%-44px-40px)] overflow-y-auto p-3 space-y-2">
-        {dmContacts.length === 0 ? (
-          <div className="text-center text-sm opacity-70 pt-8">Start a conversation!</div>
-        ) : (
-          dmContacts.map(c => {
-            const last = (dmThreads[c.id]?.msgs || []).slice(-1)[0];
-            return (
-              <button key={c.id} onClick={()=>openDMWith(c)}
-                className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2 text-left ${mood==='night'?'ocean-card':'winter-card'}`}>
-                <div className={`w-10 h-10 grid place-items-center rounded-full text-xl overflow-hidden ${mood==='night'?'ocean-avatar':'winter-avatar'}`}>
-                  <AvatarIcon avatar={c.avatar} className="w-full h-full" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium">{c.name}</div>
-                  <div className="text-[12px] opacity-60 truncate">{last?.text || "Say hi 👋"}</div>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
+  /* ---------- Screens: DM Chat ---------- */
   const dmChatScreen = currentDM && (
     <div className={`relative w-full h-full winter-page ${mood === 'night' ? 'ocean' : ''}`}>
       {StatusBar}
@@ -798,7 +891,7 @@ ${sys}
           </div>
         <div className="text-[13px] font-medium tracking-wide">{currentDM.name}</div>
         </div>
-        <button onClick={() => setScreen("messages")} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
+        <button onClick={() => setScreen("home")} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
         <button onClick={onClose} className="winter-icon-btn right-2" aria-label="Close"><X className="w-4 h-4" /></button>
       </div>
       <div ref={bodyRef} className={`h-[calc(100%-60px-44px-40px)] overflow-y-auto px-3 py-3 space-y-8 ${mood === 'night' ? 'winter-chat-bg ocean' : 'winter-chat-bg'}`}>
@@ -821,7 +914,8 @@ ${sys}
         <button className="w-9 h-9 grid place-items-center rounded-full hover:bg-black/5" title="Album (placeholder)"><Img className="w-5 h-5" /></button>
         <div className="flex-1">
           <input value={dmDraft} onChange={(e) => setDmDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendDM()}
-            placeholder="Message…" className={`w-full h-10 px-3 winter-textfield text:[14px] ${mood === 'night' ? 'ocean-input' : ''}`} />
+            placeholder="Message…" className={`w-full h-10 px-3 winter-textfield text-[14px] ${mood === 'night' ? 'ocean-input' : ''}`}
+            />
         </div>
         <button onClick={sendDM} className="w-9 h-9 grid place-items-center rounded-full winter-send" aria-label="Send"><Send className="w-4 h-4" /></button>
       </div>
@@ -832,7 +926,7 @@ ${sys}
   const SettingsScreen = (
     <div className={`relative w-full h-full winter-page ${mood === 'night' ? 'ocean' : ''}`}>
       {StatusBar}
-      <div className={`relative h-11 flex items中心 justify-center ${mood === 'night' ? 'ocean-topbar' : 'winter-topbar'}`}>
+      <div className={`relative h-11 flex items-center justify-center ${mood === 'night' ? 'ocean-topbar' : 'winter-topbar'}`}>
         <div className="text-[13px] font-medium tracking-wide">Settings</div>
         <button onClick={() => setScreen("home")} className="winter-icon-btn left-2" aria-label="Back"><ChevronLeft className="w-4 h-4" /></button>
         <button onClick={onClose} className="winter-icon-btn right-2" aria-label="Close"><X className="w-4 h-4" /></button>
@@ -851,19 +945,21 @@ ${sys}
     </div>
   );
 
-  /* ---------- Home ---------- */
+  /* ---------- Home (Live Island restored) ---------- */
   const HomeScreen = (
     <div className="relative w-full h-full" style={wallpaper(mood)}>
       {StatusBar}
       {LiveIsland}
       <div className="px-10 grid grid-cols-4 gap-5 text-center select-none" style={{ paddingTop: 120 }}>
-        {[
-          { key: "vchat",     label: "Vchat",     action: () => { setScreen("vchat"); setvchatTab("chats"); }, emoji: "💬" },
-          { key: "messages",  label: "Messages",  action: () => { setScreen("messages"); }, emoji: "✉" },
-          { key: "div",       label: "Divination", action: () => setScreen("tarot"), emoji: "🔮" },
-          { key: "game",      label: "Game",      action: () => setScreen("game"),  emoji: "🎮" },
-          { key: "mood",      label: "Weather",   action: () => setMood(mood === "sunny" ? "cloudy" : mood === "cloudy" ? "night" : "sunny"), emoji: "🌤" },
-          { key: "settings",  label: "Settings",  action: () => setScreen("settings"), emoji: "⚙" },
+      {[
+        { key: "vchat",     label: "Vchat",      action: () => { setScreen("vchat"); setvchatTab("chats"); }, emoji: "💬" },
+        { key: "vcard",     label: "Vcard",      action: () => setScreen("vcard"),     emoji: "🃏" },
+        { key: "safetynet", label: "Safety Net", action: () => setScreen("safetynet"), emoji: "🫶" },
+        { key: "div",       label: "Divination", action: () => setScreen("tarot"), emoji: "🔮" },
+        { key: "game",      label: "Game",       action: () => setScreen("game"),  emoji: "🎮" },
+        { key: "music",     label: "Music",      action: () => setScreen("music"), emoji: "🎵" },
+        { key: "mood",      label: "Weather",    action: () => setMood(mood === "sunny" ? "cloudy" : mood === "cloudy" ? "night" : "sunny"), emoji: "🌤" },
+        { key: "settings",  label: "Settings",   action: () => setScreen("settings"), emoji: "⚙" },
         ].map((app) => (
           <button key={app.key} onClick={app.action} className="flex flex-col items-center gap-1" title={app.label}>
             <div className="ios-app"><span className="text-xl">{app.emoji}</span></div>
@@ -874,10 +970,7 @@ ${sys}
       <div className="dock-wrap">
         <div className="winter-dock w-full h-[68px] rounded-[24px]" />
         <div className="absolute inset-0 flex items-center justify-around px-6">
-          {[
-            { title:"Music",    emoji:"🎵", onClick: () => {} },
-            { title:"Messages", emoji:"✉",  onClick: () => { setScreen("messages"); } },
-          ].map((i)=>(
+          {[{ title:"Music", emoji:"🎵", onClick: () => setScreen("music") }].map((i)=>(
             <button key={i.title} className="flex flex-col items-center gap-1" onClick={i.onClick} title={i.title}>
               <div className="ios-app"><span>{i.emoji}</span></div>
               <div className="ios-label">{i.title}</div>
@@ -888,7 +981,7 @@ ${sys}
     </div>
   );
 
-  /* ---------- 容器 ---------- */
+  /* ---------- Shell ---------- */
   if (!open) return null;
 
   return (
@@ -920,33 +1013,44 @@ ${sys}
             {screen === "home"     && HomeScreen}
             {screen === "vchat"    && vchatScreen}
             {screen === "chat"     && ChatScreen}
-            {screen === "messages" && messagesList}
             {screen === "dmchat"   && dmChatScreen}
             {screen === "settings" && SettingsScreen}
+
             {screen === "game" && (
-  <div style={{ height: "100%", overflow: "hidden" }}>
-    {StatusBar}
-    <Game onExit={() => setScreen("home")} />
-  </div>
-)}
+              <div style={{ height: "100%", overflow: "hidden" }}>
+                {StatusBar}
+                <Game onExit={() => setScreen("home")} />
+              </div>
+            )}
 
             {screen === "tarot" && (
               <TarotScreen onBack={() => { setScreen("home"); setTimeout(() => { setForceSafety(false); setHandoffText(""); }, 0); }}
                             onOpenSafety={() => { setScreen("home"); setForceSafety(false); setHandoffText(""); }}
                             forceSafety={forceSafety} handoffText={handoffText} />
             )}
-          </div>
 
-          <div className="absolute right-2 top-2 z-40 flex items-center gap-2">
-            <button onClick={() => setIsFullscreen((v) => !v)} className="h-9 w-9 grid place-items-center rounded-full bg-white/80 hover:bg-white"
-                    title={isFullscreen ? "Exit full screen" : "Full screen"}>
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
+            {screen === "music" && (
+              <MusicPlayer
+                mood={mood}
+                onBack={() => setScreen("home")}
+                onBuddyReact={(buddyId, text) => {
+                  const buddy = buddies.find(b => b.id === buddyId) || buddies[1] || buddies[0];
+                  if (!buddy) return;
+                  const base = Date.now();
+                  setMessages(p => ({ ...p, [buddy.id]: [...(p[buddy.id]||[]), { id: base, role: "bot", text }] }));
+                  setLivePreview({ buddy, text, ts: base });
+                }}
+              />
+            )}
+
+            {screen === "vcard" && <VcardScreen onBack={() => setScreen("home")} />}
+            {screen === "safetynet" && <SafetyNetScreen onBack={() => setScreen("home")} />}
+
           </div>
         </div>
       </div>
 
-      {/* 样式（與原設計一致） */}
+      {/* Styles */}
       <style>{`
         :root {
           --wb-text: ${THEME.main_text_color};
@@ -1002,6 +1106,8 @@ ${sys}
           box-shadow: 0 10px 24px rgba(10,40,80,.35), 0 0 16px rgba(120,180,255,.18) inset; }
         .msg-me.ocean { color: #07121f; background: rgba(180,220,255,.70); border: 1px solid rgba(200,230,255,.25);
           box-shadow: 0 10px 24px rgba(20,50,90,.35), 0 0 10px rgba(200,230,255,.22); }
+
+        .winter-island:focus-visible{ outline: 2px solid #fff; outline-offset: 2px; }
       `}</style>
     </div>
   );
