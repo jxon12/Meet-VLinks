@@ -7,7 +7,6 @@ import ChatPhone from "./components/ChatPhone";
 import LoadingVanGogh from "./components/LoadingVanGogh";
 import Security from "./components/Security";
 import FeedbackWidget from "./components/FeedbackWidget";
-import AuthPage from "./auth/AuthPage";
 import LegalModal from "./components/LegalModal";
 import InstallA2HSModal from "./components/InstallA2HSModal";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
@@ -15,7 +14,7 @@ import QuizHub from "./components/QuizHub";
 import LobbyWindow from "./components/LobbyWindow";
 import Feed from "./components/Feed";
 import PostComposer from "./components/PostComposer";
-import ProfileViewer from "./components/ProfileViewer";
+import ProfileViewer from "./components/ProfileViewer"; // ← 使用外部的 modal 版本
 import { ensureProfileExists } from "./lib/profileClient";
 import { createPortal } from "react-dom";
 import {
@@ -153,12 +152,14 @@ function ClickRipples() {
 
 /* ---------------------- App ---------------------- */
 export default function App() {
+  // Views（已移除 "profile"，因為改成用 modal 顯示）
   const [view, setView] = useState<
     "home" | "feed" | "personal" | "account" | "security" | "todo" | "lobby"
   >("home");
   const [prevView, setPrevView] = useState<"home" | "feed" | "account">("home");
   const [accountBackTo, setAccountBackTo] = useState<"home" | "feed">("home");
 
+  // Profile modal 狀態
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileUid, setProfileUid] = useState<string | null>(null);
 
@@ -167,6 +168,7 @@ export default function App() {
   const [legalOpen, setLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<"privacy" | "terms">("privacy");
 
+  // PWA
   const { deferredPrompt, promptInstall } = useInstallPrompt();
   const [showA2HS, setShowA2HS] = useState(false);
   const [justSignedUp, setJustSignedUp] = useState(false);
@@ -176,39 +178,46 @@ export default function App() {
 
   const [booting, setBooting] = useState(true);
 
+  // Avatar (local)
   const [avatar, setAvatar] = useState<string | null>(null);
 
+  // Top dropdowns
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [schoolOpen, setSchoolOpen] = useState(false);
   const [school, setSchool] = useState("School");
 
+  // AI phone
   const [aiOpen, setAiOpen] = useState(false);
 
+  // Music
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Anchors
   const featuresRef = useRef<HTMLDivElement>(null);
   const signupRef = useRef<HTMLDivElement>(null);
   const welcomeRef = useRef<HTMLDivElement>(null);
 
+  // Affirm
   const [showAffirm, setShowAffirm] = useState(false);
   const [currentAffirm, setCurrentAffirm] = useState<string>("");
 
+  // Auth form
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // Welcome screen after sign up
   const [signedUp, setSignedUp] = useState(false);
 
+  // Top rotating keyword
   const [kw, setKw] = useState<"Breathe" | "Focus" | "Connect">("Breathe");
 
+  // Auth mode & spinners
   const [authMode, setAuthMode] = useState<"login" | "signup">("signup");
   const [loginLoading, setLoginLoading] = useState(false);
   const [signupLoading, setSignupLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
-
-  // ✅ 新增 reset password overlay 状态
-  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
 
   const makeHeroTitle = (s: string) =>
     s === "School" ? "A Calmer Campus Life" : `A Calmer ${s} Life`;
@@ -240,163 +249,18 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (e, s) => {
       setSession(s);
-
-      // ✅ 关键：监听 reset link
-      if (event === "PASSWORD_RECOVERY") {
-        setShowAuthOverlay(true);
-      }
-
-      if ((event === "SIGNED_IN" || event === "USER_UPDATED") && s?.user) {
+      if ((e === "SIGNED_IN" || e === "USER_UPDATED") && s?.user) {
         try {
           await ensureProfileExists();
         } catch {}
       }
     });
-
-    return () => subscription.unsubscribe();
+    return () => sub?.subscription?.unsubscribe();
   }, []);
 
-  /* ---------------- Reset link check ---------------- */
-  useEffect(() => {
-    const u = new URL(window.location.href);
-    const isRecovery =
-      u.hash.includes("type=recovery") ||
-      u.search.includes("type=recovery") ||
-      u.pathname === "/reset-password";
-    if (isRecovery) setShowAuthOverlay(true);
-  }, []);
-
-  // ... 登录 / 注册 / sendReset 同你之前的逻辑 ...
-
-  const handleCloseA2HS = () => {
-    setShowA2HS(false);
-    localStorage.setItem("vlinks:a2hsShown", "1");
-  };
-
-  const handleInstallNow = async () => {
-    await promptInstall();
-    handleCloseA2HS();
-  };
-
-    /* ---------------- Misc ---------------- */
-  useEffect(() => {
-    const t = setTimeout(() => setBooting(false), 1200);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!justSignedUp) return;
-    const already = localStorage.getItem("vlinks:a2hsShown");
-    if (!already) setShowA2HS(true);
-    const t = setTimeout(() => setJustSignedUp(false), 0);
-    return () => clearTimeout(t);
-  }, [justSignedUp]);
-
-  // heartbeat（保持在线）
-  useEffect(() => {
-    if (!session) return;
-    (async () => {
-      const { upsertCurrentSessionRow, heartbeatSession } = await import("./lib/sessionClient");
-      await upsertCurrentSessionRow();
-      const t = setInterval(() => heartbeatSession(), 60_000);
-      const onHidden = () => {
-        if (document.visibilityState === "hidden") heartbeatSession();
-      };
-      const onUnload = () => heartbeatSession();
-
-      window.addEventListener("visibilitychange", onHidden);
-      window.addEventListener("beforeunload", onUnload);
-
-      return () => {
-        clearInterval(t);
-        window.removeEventListener("visibilitychange", onHidden);
-        window.removeEventListener("beforeunload", onUnload);
-      };
-    })();
-  }, [session]);
-
-  useEffect(() => {
-    if (!session?.user) return;
-    (async () => {
-      try {
-        await ensureProfileExists();
-      } catch {}
-    })();
-  }, [session?.user?.id]);
-
-  // avatar local persistence
-  useEffect(() => {
-    const saved = localStorage.getItem("vlinks:avatar");
-    if (saved !== null) setAvatar(saved || null);
-  }, []);
-  useEffect(() => {
-    if (avatar === null) localStorage.removeItem("vlinks:avatar");
-    else localStorage.setItem("vlinks:avatar", avatar);
-  }, [avatar]);
-
-  // Personal
-  const openPersonal = () => {
-    setPrevView(view === "personal" ? prevView : (view as "home" | "feed" | "account"));
-    setView("personal");
-  };
-
-  // Composer
-  const [composeOpen, setComposeOpen] = useState(false);
-
-  // Lobby scroll lock
-  useEffect(() => {
-    const el = document.body;
-    if (view === "lobby") {
-      const prev = el.style.overflow;
-      el.style.overflow = "hidden";
-      return () => {
-        el.style.overflow = prev;
-      };
-    }
-  }, [view]);
-
-  // hero keyword
-  useEffect(() => {
-    if (view !== "home") return;
-    const hero = document.getElementById("hero");
-    const mid = document.getElementById("features");
-    const deep = document.getElementById("signup");
-    if (!hero || !mid || !deep) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (!e.isIntersecting) return;
-          if (e.target.id === "hero") setKw("Breathe");
-          if (e.target.id === "features") setKw("Focus");
-          if (e.target.id === "signup") setKw("Connect");
-        });
-      },
-      { threshold: 0.5 }
-    );
-    [hero, mid, deep].forEach((n) => io.observe(n));
-    return () => io.disconnect();
-  }, [view]);
-
-  /* ---------------------- UI helpers ---------------------- */
-  const goToAccount = () => {
-    if (session) {
-      setAccountBackTo("home");
-      setView("account");
-      try {
-        window.scrollTo({ top: 0, behavior: "auto" });
-      } catch {}
-    } else {
-      signupRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-    setIsMenuOpen(false);
-  };
-
-  /* ---------------------- Auth actions ---------------------- */
+  /* ---------------- Auth actions ---------------- */
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       alert("Hmm where is your email & password? 🙂");
@@ -462,6 +326,129 @@ export default function App() {
     } finally {
       setResetLoading(false);
     }
+  };
+
+  /* ---------------- Misc ---------------- */
+  useEffect(() => {
+    const t = setTimeout(() => setBooting(false), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!justSignedUp) return;
+    const already = localStorage.getItem("vlinks:a2hsShown");
+    if (!already) setShowA2HS(true);
+    const t = setTimeout(() => setJustSignedUp(false), 0);
+    return () => clearTimeout(t);
+  }, [justSignedUp]);
+
+  // heartbeat
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      const { upsertCurrentSessionRow, heartbeatSession } = await import("./lib/sessionClient");
+      await upsertCurrentSessionRow();
+      const t = setInterval(() => heartbeatSession(), 60_000);
+      const onHidden = () => {
+        if (document.visibilityState === "hidden") heartbeatSession();
+      };
+      const onUnload = () => heartbeatSession();
+
+      window.addEventListener("visibilitychange", onHidden);
+      window.addEventListener("beforeunload", onUnload);
+
+      return () => {
+        clearInterval(t);
+        window.removeEventListener("visibilitychange", onHidden);
+        window.removeEventListener("beforeunload", onUnload);
+      };
+    })();
+  }, [session]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    (async () => {
+      try {
+        await ensureProfileExists();
+      } catch {}
+    })();
+  }, [session?.user?.id]);
+
+  // avatar local persistence
+  useEffect(() => {
+    const saved = localStorage.getItem("vlinks:avatar");
+    if (saved !== null) setAvatar(saved || null);
+  }, []);
+  useEffect(() => {
+    if (avatar === null) localStorage.removeItem("vlinks:avatar");
+    else localStorage.setItem("vlinks:avatar", avatar);
+  }, [avatar]);
+
+  const handleCloseA2HS = () => {
+    setShowA2HS(false);
+    localStorage.setItem("vlinks:a2hsShown", "1");
+  };
+
+  const handleInstallNow = async () => {
+    await promptInstall();
+    handleCloseA2HS();
+  };
+
+  // Personal
+  const openPersonal = () => {
+    setPrevView(view === "personal" ? prevView : (view as "home" | "feed" | "account"));
+    setView("personal");
+  };
+
+  // Composer
+  const [composeOpen, setComposeOpen] = useState(false);
+
+  // Lobby scroll lock
+  useEffect(() => {
+    const el = document.body;
+    if (view === "lobby") {
+      const prev = el.style.overflow;
+      el.style.overflow = "hidden";
+      return () => {
+        el.style.overflow = prev;
+      };
+    }
+  }, [view]);
+
+  // hero keyword
+  useEffect(() => {
+    if (view !== "home") return;
+    const hero = document.getElementById("hero");
+    const mid = document.getElementById("features");
+    const deep = document.getElementById("signup");
+    if (!hero || !mid || !deep) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          if (e.target.id === "hero") setKw("Breathe");
+          if (e.target.id === "features") setKw("Focus");
+          if (e.target.id === "signup") setKw("Connect");
+        });
+      },
+      { threshold: 0.5 }
+    );
+    [hero, mid, deep].forEach((n) => io.observe(n));
+    return () => io.disconnect();
+  }, [view]);
+
+  /* ---------------------- UI helpers ---------------------- */
+  const goToAccount = () => {
+    if (session) {
+      setAccountBackTo("home");
+      setView("account");
+      try {
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch {}
+    } else {
+      signupRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    setIsMenuOpen(false);
   };
 
   /* ---------------------- Render ---------------------- */
@@ -531,11 +518,13 @@ export default function App() {
             }}
             onOpenProfile={(uid: string) => {
               if (!uid) return;
+              // 自己 → 仍然進 My Account
               if (uid === session?.user?.id) {
                 setAccountBackTo("feed");
                 setView("account");
                 return;
               }
+              // 別人 → 打開 ProfileViewer modal
               setProfileUid(uid);
               setProfileOpen(true);
             }}
@@ -753,19 +742,19 @@ export default function App() {
                         Gentle nudges for breath & micro-breaks through your day.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg-white/10 border border-black/15 backdrop-blur hover:bg-white/15 transition">
-                      <div className="mb-2 texttext-black/90 flex items-center gap-2">
+                    <div className="rounded-2xl p-5 bg-white/10 border border-white/15 backdrop-blur hover:bg-white/15 transition">
+                      <div className="mb-2 text-white/90 flex items-center gap-2">
                         <Calendar className="w-5 h-5" /> Focus Sessions
                       </div>
-                      <p className="texttext-black/60 text-sm leading-relaxed">
+                      <p className="text-white/60 text-sm leading-relaxed">
                         Pomodoro with ambient soundscapes from the deep sea.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg-white/10 border border-black/15 backdrop-blur hover:bg-white/15 transition">
-                      <div className="mb-2 texttext-black/90 flex items-center gap-2">
+                    <div className="rounded-2xl p-5 bg-white/10 border border-white/15 backdrop-blur hover:bg-white/15 transition">
+                      <div className="mb-2 text-white/90 flex items-center gap-2">
                         <HeartHandshake className="w-5 h-5" /> Support Circles
                       </div>
-                      <p className="texttext-black/60 text-sm leading-relaxed">
+                      <p className="text-white/60 text-sm leading-relaxed">
                         Light peer check-ins to stay kind, consistent, connected.
                       </p>
                     </div>
@@ -783,30 +772,189 @@ export default function App() {
               </section>
             )}
 
-            {/* Sign up / Login & 欢迎页 */}
+            {/* Sign up / Login */}
             <section id="signup" ref={signupRef} className="relative z-10">
               {!session && !signedUp ? (
-                <AuthPage
-                  // 透传需要的回调（与旧内嵌表单等价）
-                  email={email}
-                  setEmail={setEmail}
-                  password={password}
-                  setPassword={setPassword}
-                  fullName={fullName}
-                  setFullName={setFullName}
-                  school={school}
-                  setSchool={setSchool}
-                  schoolOpen={schoolOpen}
-                  setSchoolOpen={setSchoolOpen}
-                  authMode={authMode}
-                  setAuthMode={setAuthMode}
-                  loginLoading={loginLoading}
-                  signupLoading={signupLoading}
-                  resetLoading={resetLoading}
-                  onLogin={handleLogin}
-                  onSignup={handleCreateAccount}
-                  onSendReset={sendReset}
-                />
+                <div className="max-w-md mx-auto px-6 py-16 min-h-[calc(100vh-4rem)] flex items-center">
+                  <div className="relative w-full rounded-3xl p-[1px] bg-[conic-gradient(at_top_left,rgba(147,197,253,0.45),rgba(186,230,253,0.45),rgba(196,181,253,0.45),rgba(147,197,253,0.45))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                    <div className="rounded-3xl bg-[rgba(18,26,41,0.7)] backdrop-blur-2xl border border-white/10 px-6 py-7">
+                      {/* tabs */}
+                      <div className="flex items-center gap-2 mb-6">
+                        <button
+                          onClick={() => setAuthMode("login")}
+                          className={`flex-1 h-10 rounded-full text-sm border transition ${
+                            authMode === "login"
+                              ? "bg-white text-black border-white"
+                              : "bg-white/5 text-white/80 border-white/20 hover:bg-white/10"
+                          }`}
+                        >
+                          Log In
+                        </button>
+                        <button
+                          onClick={() => setAuthMode("signup")}
+                          className={`flex-1 h-10 rounded-full text-sm border transition ${
+                            authMode === "signup"
+                              ? "bg-white text-black border-white"
+                              : "bg-white/5 text-white/80 border-white/20 hover:bg-white/10"
+                          }`}
+                        >
+                          Sign Up
+                        </button>
+                      </div>
+
+                      <h2 className="text-[22px] font-semibold tracking-tight">
+                        {authMode === "login" ? "Welcome back" : "Create your account"}
+                      </h2>
+                      <p className="text-white/70 mt-1 mb-6 text-[14px] leading-snug">
+                        {authMode === "login"
+                          ? "Log in to continue to VLinks."
+                          : "Join VLinks to stay calm, focused, and connected."}
+                      </p>
+
+                      <form
+                        className="space-y-4"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (authMode === "login") handleLogin();
+                          else handleCreateAccount();
+                        }}
+                      >
+                        {authMode === "signup" && (
+                          <div>
+                            <label className="block text-sm mb-1.5 text-white/80">Full Name</label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={fullName}
+                              onChange={(e) => setFullName(e.target.value)}
+                              placeholder="Louise"
+                              autoComplete="name"
+                              spellCheck={false}
+                              className="w-full h-12 px-4 rounded-2xl bg-white/5 text-white placeholder-white/40 border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus:outline-none focus:border-white/35 focus:ring-2 focus:ring-white/15"
+                            />
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-sm mb-1.5 text-white/80">Email</label>
+                          <input
+                            type="email"
+                            name="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            inputMode="email"
+                            autoComplete="email"
+                            spellCheck={false}
+                            className="w-full h-12 px-4 rounded-2xl bg-white/5 text-white placeholder-white/40 border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus:outline-none focus:border-white/35 focus:ring-2 focus:ring-white/15"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <label className="block text-sm mb-1.5 text-white/80">Password</label>
+                            {authMode === "login" && (
+                              <button
+                                type="button"
+                                onClick={sendReset}
+                                disabled={resetLoading}
+                                className="text-xs text-white/70 hover:text-white underline disabled:opacity-60"
+                                title="We’ll email you a reset link"
+                              >
+                                {resetLoading ? "Sending…" : "Forgot password?"}
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="password"
+                            name={authMode === "signup" ? "new-password" : "current-password"}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                            className="w-full h-12 px-4 rounded-2xl bg-white/5 text-white placeholder-white/40 border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus:outline-none focus:border-white/35 focus:ring-2 focus:ring-white/15"
+                          />
+                        </div>
+
+                        {authMode === "signup" && (
+                          <div className="relative">
+                            <label className="block text-sm mb-1.5 text-white/80">School</label>
+                            <button
+                              type="button"
+                              onClick={() => setSchoolOpen((v) => !v)}
+                              className="flex items-center justify-between w-full h-12 px-4 rounded-2xl bg-white/5 text-white border border-white/15 focus:outline-none focus:border-white/35 focus:ring-2 focus:ring-white/15"
+                            >
+                              {school === "School" ? "Select your school" : school}
+                              <ChevronDown
+                                className={`w-4 h-4 transition-transform ${schoolOpen ? "rotate-180" : ""}`}
+                              />
+                            </button>
+
+                            {schoolOpen && (
+                              <div className="absolute z-50 mt-2 w-full rounded-2xl border border-white/15 bg-[rgba(10,15,25,0.9)] backdrop-blur-xl p-2 text-sm space-y-1 shadow-2xl">
+                                {SCHOOLS.map((s) => (
+                                  <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => {
+                                      setSchool(s);
+                                      setSchoolOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/10"
+                                  >
+                                    {s}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          disabled={authMode === "login" ? loginLoading : signupLoading}
+                          className="mt-2 w-full h-12 rounded-2xl bg-white text-black font-medium border border-white/25 hover:border-white/50 hover:bg-white/90 transition active:scale-[0.98] disabled:opacity-60"
+                        >
+                          {authMode === "login"
+                            ? loginLoading
+                              ? "Logging in…"
+                              : "Log In"
+                            : signupLoading
+                            ? "Creating…"
+                            : "Create Account"}
+                        </button>
+
+                        {authMode === "signup" && (
+                          <p className="text-center text-xs text-white/60">
+                            By signing up, you agree to our{" "}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLegalTab("terms");
+                                setLegalOpen(true);
+                              }}
+                              className="underline hover:text-white"
+                            >
+                              Terms
+                            </button>{" "}
+                            &{" "}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLegalTab("privacy");
+                                setLegalOpen(true);
+                              }}
+                              className="underline hover:text-white"
+                            >
+                              Privacy
+                            </button>
+                            .
+                          </p>
+                        )}
+                      </form>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 /* Welcome */
                 <div
@@ -852,7 +1000,7 @@ export default function App() {
 
                     <button
                       onClick={() => setView("feed")}
-                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg-white text-black border border-black/25 hover:border-black/50 hover:bg-white/90 transition"
+                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg-white text-black border border-white/25 hover:border-white/50 hover:bg-white/90 transition"
                     >
                       <Sparkles className="w-5 h-5" /> Start your journey
                     </button>
@@ -907,7 +1055,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Footer */}
+            {/* Footer（修正 className 的中文「白」字） */}
             <footer className="relative z-10 border-t border-white/10 bg-white/5 backdrop-blur-md">
               <div className="max-w-5xl mx-auto px-6 py-10 text-center text-sm text-white/70 space-y-4">
                 <div className="tracking-[0.18em] text-base font-semibold text-white/90">VLinks</div>
@@ -980,9 +1128,7 @@ export default function App() {
         <InstallA2HSModal
           open={showA2HS}
           onClose={handleCloseA2HS}
-          onInstall={async () => {
-            await handleInstallNow();
-          }}
+          onInstall={handleInstallNow}
           canOneTapInstall={!!deferredPrompt}
           isIOS={isIOS}
         />,
@@ -1011,6 +1157,8 @@ export default function App() {
         ) : null,
         document.body
       )}
+
+      {/* ✅ 用 SimpleComposer 取代舊的 ComposeSheet */}
       {createPortal(
         <PostComposer
           open={composeOpen}
@@ -1022,6 +1170,8 @@ export default function App() {
         />,
         document.body
       )}
+
+      {/* ✅ ProfileViewer modal 掛在這裡 */}
       {createPortal(
         <ProfileViewer
           userId={profileUid || ""}
@@ -1031,38 +1181,7 @@ export default function App() {
         document.body
       )}
 
-      {/* ✅ Reset Password Overlay —— 统一在任何页面都能弹出 */}
-      {createPortal(
-        showAuthOverlay ? (
-          <div className="fixed inset-0 z-[80]">
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowAuthOverlay(false)}
-            />
-            <div className="absolute inset-0 grid place-items-center p-4">
-              <div className="w-full max-w-md relative">
-                <button
-                  onClick={() => setShowAuthOverlay(false)}
-                  className="absolute -top-10 right-0 w-10 h-10 grid place-items-center rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20"
-                  aria-label="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="rounded-2xl overflow-hidden border border-white/15 bg-[rgba(18,26,41,0.85)] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
-                  {/* 直接复用 AuthPage 内部的 reset 密码流程 */}
-                  <AuthPage
-                    forceMode="forgot-finish"  // 让 AuthPage 进入“设置新密码”模式（你在 AuthPage 里按这个 prop 识别）
-                    onAfterReset={() => setShowAuthOverlay(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null,
-        document.body
-      )}
-
-     
+      {/* ✅ 讓點擊泡泡圈永遠在最上層（不擋互動） */}
       <ClickRipples />
     </>
   );
