@@ -753,19 +753,19 @@ export default function App() {
                         Gentle nudges for breath & micro-breaks through your day.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg-white/10 border border白/15 backdrop-blur hover:bg-white/15 transition">
-                      <div className="mb-2 text白/90 flex items-center gap-2">
+                    <div className="rounded-2xl p-5 bg-white/10 border border-black/15 backdrop-blur hover:bg-white/15 transition">
+                      <div className="mb-2 texttext-black/90 flex items-center gap-2">
                         <Calendar className="w-5 h-5" /> Focus Sessions
                       </div>
-                      <p className="text白/60 text-sm leading-relaxed">
+                      <p className="texttext-black/60 text-sm leading-relaxed">
                         Pomodoro with ambient soundscapes from the deep sea.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg-white/10 border border白/15 backdrop-blur hover:bg-white/15 transition">
-                      <div className="mb-2 text白/90 flex items-center gap-2">
+                    <div className="rounded-2xl p-5 bg-white/10 border border-black/15 backdrop-blur hover:bg-white/15 transition">
+                      <div className="mb-2 texttext-black/90 flex items-center gap-2">
                         <HeartHandshake className="w-5 h-5" /> Support Circles
                       </div>
-                      <p className="text白/60 text-sm leading-relaxed">
+                      <p className="texttext-black/60 text-sm leading-relaxed">
                         Light peer check-ins to stay kind, consistent, connected.
                       </p>
                     </div>
@@ -852,7 +852,7 @@ export default function App() {
 
                     <button
                       onClick={() => setView("feed")}
-                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg-white text黑 border border白/25 hover:border白/50 hover:bg-white/90 transition"
+                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg-white text-black border border-black/25 hover:border-black/50 hover:bg-white/90 transition"
                     >
                       <Sparkles className="w-5 h-5" /> Start your journey
                     </button>
