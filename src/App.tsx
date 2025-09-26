@@ -745,7 +745,7 @@ export default function App() {
                 <div className="max-w-5xl mx-auto px-6 pb-16">
                   <h3 className="text-center text-white/90 text-xl mb-6 tracking-wide">What you'll get</h3>
                   <div className="grid sm:grid-cols-3 gap-4">
-                    <div className="rounded-2xl p-5 bg-white/10 border border-white/15 backdrop-blur hover:bg白/15 transition">
+                    <div className="rounded-2xl p-5 bg-white/10 border border-white/15 backdrop-blur hover:bg-white/15 transition">
                       <div className="mb-2 text-white/90 flex items-center gap-2">
                         <Bell className="w-5 h-5" /> Mindful Reminders
                       </div>
@@ -753,7 +753,7 @@ export default function App() {
                         Gentle nudges for breath & micro-breaks through your day.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg白/10 border border白/15 backdrop-blur hover:bg白/15 transition">
+                    <div className="rounded-2xl p-5 bg-white/10 border border白/15 backdrop-blur hover:bg-white/15 transition">
                       <div className="mb-2 text白/90 flex items-center gap-2">
                         <Calendar className="w-5 h-5" /> Focus Sessions
                       </div>
@@ -761,7 +761,7 @@ export default function App() {
                         Pomodoro with ambient soundscapes from the deep sea.
                       </p>
                     </div>
-                    <div className="rounded-2xl p-5 bg白/10 border border白/15 backdrop-blur hover:bg白/15 transition">
+                    <div className="rounded-2xl p-5 bg-white/10 border border白/15 backdrop-blur hover:bg-white/15 transition">
                       <div className="mb-2 text白/90 flex items-center gap-2">
                         <HeartHandshake className="w-5 h-5" /> Support Circles
                       </div>
@@ -852,7 +852,7 @@ export default function App() {
 
                     <button
                       onClick={() => setView("feed")}
-                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg白 text黑 border border白/25 hover:border白/50 hover:bg白/90 transition"
+                      className="mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 bg-white text黑 border border白/25 hover:border白/50 hover:bg-white/90 transition"
                     >
                       <Sparkles className="w-5 h-5" /> Start your journey
                     </button>
