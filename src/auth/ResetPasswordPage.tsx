@@ -1,117 +1,54 @@
-// src/pages/ResetPasswordPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export default function ResetPasswordPage() {
-  const [loading, setLoading] = useState(true);
-  const [exchanged, setExchanged] = useState(false);
-  const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [msg, setMsg] = useState<string|null>(null);
+  const [err, setErr] = useState<string|null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // 从 URL 解析 type 和 code
-  const { type, code } = useMemo(() => {
-    const url = new URL(window.location.href);
-    const q = url.searchParams;
-    const h = new URLSearchParams(url.hash.replace(/^#/, "?"));
-    return {
-      type: q.get("type") || h.get("type"),
-      code: q.get("code") || h.get("code"),
-    };
-  }, []);
-
-  // 进入页面时，尝试用 code 兑换 session
-  useEffect(() => {
-    (async () => {
-      try {
-        if (type !== "recovery") {
-          setErr("Invalid reset link. Please request a new one.");
-          setLoading(false);
-          return;
-        }
-        if (!code) {
-          setErr("Missing code in the URL.");
-          setLoading(false);
-          return;
-        }
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) throw error;
-        setExchanged(true);
-      } catch (e: any) {
-        setErr(e?.message || String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [type, code]);
-
-  async function submit(e: React.FormEvent) {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr(null);
-    setMsg(null);
+    setErr(null); setMsg(null);
 
-    if (!pw || pw.length < 8) {
-      setErr("Password must be at least 8 characters.");
-      return;
-    }
-    if (pw !== pw2) {
-      setErr("Passwords do not match.");
-      return;
-    }
+    if (!p1 || !p2) return setErr("Please enter your new password twice.");
+    if (p1 !== p2) return setErr("Passwords do not match.");
+    if (p1.length < 8) return setErr("Use at least 8 characters.");
 
-    const { error } = await supabase.auth.updateUser({ password: pw });
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-    setMsg("Password updated successfully. You can now log in with the new password.");
-  }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: p1 });
+    setLoading(false);
 
-  if (loading) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2>Reset your password</h2>
-        <p>Verifying your reset link…</p>
-      </div>
-    );
-  }
-
-  if (!exchanged) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2>Reset your password</h2>
-        {err ? <p style={{ color: "tomato" }}>{err}</p> : null}
-        <p><a href="/">← Back to login</a></p>
-      </div>
-    );
-  }
+    if (error) setErr(error.message);
+    else setMsg("Password updated! You can now log in with your new password.");
+  };
 
   return (
-    <div style={{ padding: 24, maxWidth: 420, margin: "32px auto" }}>
-      <h2 style={{ marginBottom: 12 }}>Set a new password</h2>
-      <form onSubmit={submit}>
-        <input
-          type="password"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          placeholder="New password (min 8 chars)"
-          style={{ display: "block", width: "100%", padding: 10, margin: "8px 0" }}
-        />
-        <input
-          type="password"
-          value={pw2}
-          onChange={(e) => setPw2(e.target.value)}
-          placeholder="Confirm new password"
-          style={{ display: "block", width: "100%", padding: 10, margin: "8px 0" }}
-        />
-        {err && <div style={{ color: "tomato", marginTop: 6 }}>{err}</div>}
-        {msg && <div style={{ color: "green", marginTop: 6 }}>{msg}</div>}
-        <button type="submit" style={{ marginTop: 12, padding: "10px 14px" }}>
-          Update password
+    <div style={{minHeight:"100vh",display:"grid",placeItems:"center",background:"#0b1325"}}>
+      <form onSubmit={submit} style={{width:320,padding:20,borderRadius:16,background:"rgba(255,255,255,.08)",color:"#fff",backdropFilter:"blur(8px)"}}>
+        <h2 style={{margin:"0 0 12px",fontWeight:700}}>Reset your password</h2>
+        {err && <div style={{color:"#ffb4b4",marginBottom:8}}>{err}</div>}
+        {msg && <div style={{color:"#b7ffb7",marginBottom:8}}>{msg}</div>}
+
+        <input type="password" value={p1} onChange={e=>setP1(e.target.value)}
+          placeholder="New password" style={inpStyle}/>
+        <input type="password" value={p2} onChange={e=>setP2(e.target.value)}
+          placeholder="Confirm new password" style={inpStyle}/>
+        <button disabled={loading} style={btnStyle}>
+          {loading ? "Updating…" : "Update password"}
         </button>
+        <div style={{marginTop:10}}><a href="/">← Back to login</a></div>
       </form>
-      <p style={{ marginTop: 16 }}><a href="/">← Back to login</a></p>
     </div>
   );
 }
+
+const inpStyle: React.CSSProperties = {
+  width:"100%",height:44,margin:"6px 0",padding:"0 12px",
+  borderRadius:12,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.1)",color:"#fff"
+};
+const btnStyle: React.CSSProperties = {
+  width:"100%",height:44,marginTop:8,borderRadius:12,border:"1px solid rgba(255,255,255,.6)",
+  background:"#fff",color:"#000",fontWeight:700
+};
