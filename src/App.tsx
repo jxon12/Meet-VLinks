@@ -726,7 +726,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="mt-10 flex items-center justify中心 gap-3">
+                <div className="mt-10 flex items-center justify-center gap-3">
                   <button
                     onClick={() => featuresRef.current?.scrollIntoView({ behavior: "smooth" })}
                     className="w-10 h-10 grid place-items-center rounded-full border border-white/20 bg-white/5 hover:bg-white/10 transition"
