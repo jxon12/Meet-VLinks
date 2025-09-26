@@ -11,7 +11,7 @@ export default function ResetTester() {
   const [busy, setBusy] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
 
-  // 1) 进入页面就尝试把 URL 中的 code/#token 兑换成 session（兜底）
+  // 进入页面就尝试把 URL 中的 code/#token 兑换成 session（兜底）
   useEffect(() => {
     (async () => {
       setMsg("Checking existing session…");
@@ -35,7 +35,6 @@ export default function ResetTester() {
     })();
   }, []);
 
-  // 2) 手动再试一次（如果需要）
   const forceExchange = async () => {
     setErr(null); setMsg(null);
     try {
@@ -49,7 +48,6 @@ export default function ResetTester() {
     }
   };
 
-  // 3) 真正更新密码（双输入校验）
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null); setMsg(null);
@@ -117,9 +115,9 @@ export default function ResetTester() {
           Tips:
           <ul style={{margin:"8px 0 0 16px", lineHeight:1.6}}>
             <li>确保 Supabase 的 Site URL/Redirect URLs 都是当前域名（https）。</li>
-            <li>如果使用 SendGrid，关闭 Click Tracking，避免 # 片段丢失。</li>
-            <li>不要用旧邮件；每次测试都重新发送 reset 邮件。</li>
-            <li>必要时复制链接到隐身窗口测试，避免邮箱提前“点开”占用 OTP。</li>
+            <li>如果使用 SendGrid，关闭 Click Tracking（否则会剥掉 # 片段）。</li>
+            <li>每次测试都重新发送 reset 邮件，不要点旧邮件。</li>
+            <li>可在隐身窗口打开，避免邮箱端先预取链接把 OTP 占用。</li>
           </ul>
         </div>
       </div>
