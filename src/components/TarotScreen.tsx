@@ -131,7 +131,6 @@ async function callGemini(promptText: string) {
   throw lastError || new Error("All models failed");
 }
 
-
 /** Component */
 export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false, handoffText }: Props) {
   const [step, setStep] = useState<"category" | "describe" | "pick" | "result">("category");
