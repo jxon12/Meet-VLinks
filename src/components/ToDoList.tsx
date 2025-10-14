@@ -450,7 +450,7 @@ export default function ToDoList() {
 
   async function callGemini(text: string, image?: { mime: string; b64: string }) {
     if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
-    const model = "gemini-1.5-flash";
+    const model = "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
     const parts: any[] = [];
