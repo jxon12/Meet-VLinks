@@ -65,7 +65,7 @@ function generateLocalReading(selected: number[], category: string, desc: string
 /** --- Gemini call --- */
 async function callGemini(promptText: string) {
   if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
 
   const body = {
     systemInstruction: {
