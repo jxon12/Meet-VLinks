@@ -72,22 +72,18 @@ async function callGemini(promptText: string) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
-     const body = {
-  systemInstruction: {                // ← 用 camelCase
-    role: "user",
-    parts: [
-      {
-        text:
-          "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3-6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'",
-      },
-    ],
-  },
-  contents: [{ role: "user", parts: [{ text: promptText }] }],
-  generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
-  safetySettings: [],
-};
+      // ✅ REST v1 不支援 systemInstruction，要把系統提示合併進 contents
+      const systemPrompt =
+        "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3–6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'";
 
-
+      const body = {
+        contents: [
+          { role: "user", parts: [{ text: systemPrompt }] },
+          { role: "user", parts: [{ text: promptText }] },
+        ],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
+        safetySettings: [],
+      };
 
       const res = await fetch(url, {
         method: "POST",
@@ -127,13 +123,14 @@ async function callGemini(promptText: string) {
       throw new Error("Empty response");
     } catch (e) {
       lastError = e;
-      console.warn(`Model ${/* keep simple label */""} failed:`, e);
+      console.warn(`Model ${model} failed:`, e);
       await new Promise((r) => setTimeout(r, 800));
     }
   }
 
   throw lastError || new Error("All models failed");
 }
+
 
 /** Component */
 export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false, handoffText }: Props) {
