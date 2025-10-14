@@ -72,16 +72,21 @@ async function callGemini(promptText: string) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
-      const body = {
-  systemInstruction: {
-    parts: [{ text:
-      "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3-6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'"
-    }],
+     const body = {
+  systemInstruction: {                // ← 用 camelCase
+    role: "user",
+    parts: [
+      {
+        text:
+          "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3-6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'",
+      },
+    ],
   },
   contents: [{ role: "user", parts: [{ text: promptText }] }],
   generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
   safetySettings: [],
 };
+
 
 
       const res = await fetch(url, {
