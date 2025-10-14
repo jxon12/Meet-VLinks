@@ -65,10 +65,14 @@ function generateLocalReading(selected: number[], category: string, desc: string
 /** --- Gemini call --- */
 async function callGemini(promptText: string) {
   if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
+
+  // 建議先用 2.5-pro，不行再換 2.5-flash
+  const model = "gemini-2.5-pro";
+
+  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
   const body = {
-    systemInstruction: {
+    system_instruction: {                      // REST 用 snake_case
       role: "user",
       parts: [
         {
@@ -79,6 +83,7 @@ async function callGemini(promptText: string) {
     },
     contents: [{ role: "user", parts: [{ text: promptText }] }],
     generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
+    safetySettings: [],
   };
 
   const res = await fetch(url, {
@@ -87,21 +92,39 @@ async function callGemini(promptText: string) {
     body: JSON.stringify(body),
   });
 
+  const txt = await res.text();
   if (!res.ok) {
-    const txt = await res.text();
-    const err: any = new Error(`Gemini error: ${res.status} ${txt}`);
+    // 404 多半是 v1beta 或型號錯；403 可能是配額或權限
+    let j: any;
+    try { j = JSON.parse(txt); } catch {}
+    const code = j?.error?.code;
+    const msg = j?.error?.message || txt;
+    const err = new Error(`Gemini error ${res.status}${code ? ` (${code})` : ""}: ${msg}`);
     (err as any).status = res.status;
-    try {
-      const json = JSON.parse(txt);
-      (err as any).json = json;
-    } catch {}
+    (err as any).json = j;
     throw err;
   }
-  const data = await res.json();
-  const out =
-    data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") || "(no response)";
-  return String(out);
+
+  // 更健壯的解析
+  let data: any = {};
+  try { data = JSON.parse(txt); } catch {}
+
+  // 被安全策略擋住時會有 promptFeedback 或 finishReason
+  const blocked =
+    data?.promptFeedback?.blockReason ||
+    data?.candidates?.[0]?.finishReason === "SAFETY";
+
+  if (blocked) {
+    return "(no response due to safety block)";
+  }
+
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const text =
+    parts.map((p: any) => p?.text).filter(Boolean).join("\n").trim();
+
+  return text || "(no response)";
 }
+
 
 /** --- Component --- */
 export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false, handoffText }: Props) {
