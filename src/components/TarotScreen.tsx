@@ -12,12 +12,11 @@ type Props = {
 const MAX = 5;
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 
-/** GitHub raw images base (把 24 張卡片都改用這個來源) */
-const GH_IMAGE_BASE =
-  "https://raw.githubusercontent.com/jxon12/tarot/main";
+/** GitHub raw images base */
+const GH_IMAGE_BASE = "https://raw.githubusercontent.com/jxon12/tarot/main";
 const cardSrcById = (id: number) => `${GH_IMAGE_BASE}/${String(id).padStart(2, "0")}.png`;
 
-/** ----- small local meanings for fallback (short) ----- */
+/** local fallback meanings */
 const LOCAL_MEANINGS: Record<number, string> = {
   1: "New beginnings — fresh energy, potential.",
   2: "Partnerships — connections, collaboration.",
@@ -45,7 +44,7 @@ const LOCAL_MEANINGS: Record<number, string> = {
   24: "Reflection — write or record your thoughts.",
 };
 
-/** --- helper that creates a short fallback reading from local meanings --- */
+/** local reading fallback */
 function generateLocalReading(selected: number[], category: string, desc: string) {
   const lines: string[] = [];
   lines.push(`Category: ${category}`);
@@ -62,75 +61,81 @@ function generateLocalReading(selected: number[], category: string, desc: string
   return lines.join("\n");
 }
 
-/** --- Gemini call --- */
+/** Gemini call with auto fallback Pro -> Flash */
 async function callGemini(promptText: string) {
   if (!GEMINI_KEY) throw new Error("Missing VITE_GEMINI_API_KEY");
 
-  // 建議先用 2.5-pro，不行再換 2.5-flash
-  const model = "gemini-2.5-pro";
+  const models = ["gemini-2.5-pro", "gemini-2.5-flash"];
+  let lastError: any = null;
 
-  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
-  const body = {
-    system_instruction: {                      // REST 用 snake_case
-      role: "user",
-      parts: [
-        {
-          text:
-            "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3-6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'",
+      const body = {
+        system_instruction: {
+          role: "user",
+          parts: [
+            {
+              text:
+                "You are an empathetic, concise divination assistant. Always reply in clear English, warm and nonjudgmental. Provide a short 3-6 sentence reading, then give 2 short practical suggestions. Finish with one line: 'For reference only. Not professional advice.'",
+            },
+          ],
         },
-      ],
-    },
-    contents: [{ role: "user", parts: [{ text: promptText }] }],
-    generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
-    safetySettings: [],
-  };
+        contents: [{ role: "user", parts: [{ text: promptText }] }],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
+        safetySettings: [],
+      };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-  const txt = await res.text();
-  if (!res.ok) {
-    // 404 多半是 v1beta 或型號錯；403 可能是配額或權限
-    let j: any;
-    try { j = JSON.parse(txt); } catch {}
-    const code = j?.error?.code;
-    const msg = j?.error?.message || txt;
-    const err = new Error(`Gemini error ${res.status}${code ? ` (${code})` : ""}: ${msg}`);
-    (err as any).status = res.status;
-    (err as any).json = j;
-    throw err;
+      const txt = await res.text();
+      if (!res.ok) {
+        let j: any;
+        try { j = JSON.parse(txt); } catch {}
+        const code = j?.error?.code;
+        const msg = j?.error?.message || txt;
+        const err = new Error(`Gemini error ${res.status}${code ? ` (${code})` : ""}: ${msg}`);
+        (err as any).status = res.status;
+        (err as any).json = j;
+        throw err;
+      }
+
+      let data: any = {};
+      try { data = JSON.parse(txt); } catch {}
+
+      const blocked =
+        data?.promptFeedback?.blockReason ||
+        data?.candidates?.[0]?.finishReason === "SAFETY";
+      if (blocked) {
+        console.warn("Gemini safety block:", data?.promptFeedback);
+        return "(no response due to safety block)";
+      }
+
+      const parts =
+        data?.candidates?.[0]?.content?.parts ??
+        (data?.candidates?.[0]?.output ? [{ text: data.candidates[0].output }] : []);
+      const text = parts.map((p: any) => p?.text).filter(Boolean).join("\n").trim();
+
+      if (text) return text;
+      throw new Error("Empty response");
+    } catch (e) {
+      lastError = e;
+      console.warn(`Model ${/* keep simple label */""} failed:`, e);
+      await new Promise((r) => setTimeout(r, 800));
+    }
   }
 
-  // 更健壯的解析
-  let data: any = {};
-  try { data = JSON.parse(txt); } catch {}
-
-  // 被安全策略擋住時會有 promptFeedback 或 finishReason
-  const blocked =
-    data?.promptFeedback?.blockReason ||
-    data?.candidates?.[0]?.finishReason === "SAFETY";
-
-  if (blocked) {
-    return "(no response due to safety block)";
-  }
-
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text =
-    parts.map((p: any) => p?.text).filter(Boolean).join("\n").trim();
-
-  return text || "(no response)";
+  throw lastError || new Error("All models failed");
 }
 
-
-/** --- Component --- */
+/** Component */
 export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false, handoffText }: Props) {
   const [step, setStep] = useState<"category" | "describe" | "pick" | "result">("category");
-  const CATEGORIES = ["Intimate relationship", "Career / study", "Interpersonal", "Self-growth"];
-
   const [category, setCategory] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
@@ -140,11 +145,8 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (forceSafety) setShowSafety(true);
-  }, [forceSafety]);
+  useEffect(() => { if (forceSafety) setShowSafety(true); }, [forceSafety]);
 
-  // cards 01..24（改為 GitHub raw）
   const cards = useMemo(() => {
     return Array.from({ length: 24 }).map((_, i) => {
       const id = i + 1;
@@ -153,13 +155,16 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
   }, []);
 
   useEffect(() => {
-    // preload a few images (first 8)
     cards.slice(0, 8).forEach((c) => { const img = new Image(); img.src = c.src; });
   }, [cards]);
 
   function toggleCard(id: number) {
     setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < MAX ? [...prev, id] : prev
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : prev.length < MAX
+        ? [...prev, id]
+        : prev
     );
   }
 
@@ -191,51 +196,19 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
     ].join("\n\n");
 
     try {
-      let tryCount = 0;
-      const maxRetries = 3;
-      while (tryCount <= maxRetries) {
-        tryCount++;
-        try {
-          const text = await callGemini(prompt);
-          setAiResult(text.trim());
-          setStep("result");
-          setAiLoading(false);
-          return;
-        } catch (e: any) {
-          const status = e?.status || (e?.json?.error?.code) || null;
-          const msg = e?.message || String(e);
-          if (status === 429 || (typeof msg === "string" && /quota|exhausted|429/i.test(msg))) {
-            const retryInfo = e?.json?.error?.details?.find((d: any) => d["@type"]?.includes("RetryInfo"));
-            const retryDelay = retryInfo?.retryDelay || null;
-            const retrySecs = retryDelay ? parseFloat(String(retryDelay).replace(/[^\d.]/g, "")) : null;
-            setErrorMsg(
-              `Gemini quota exhausted (429). Using local fallback reading. Please check your Google Cloud billing/quotas to restore Gemini.\n${retrySecs ? `Retry recommended in ${retrySecs}s.` : ""}`
-            );
-            const local = generateLocalReading(selected, category, desc);
-            setAiResult(local);
-            setStep("result");
-            setAiLoading(false);
-            return;
-          }
-          if (tryCount <= maxRetries) {
-            const waitMs = Math.pow(2, tryCount) * 700;
-            await new Promise((res) => setTimeout(res, waitMs));
-            continue;
-          } else {
-            throw e;
-          }
-        }
-      }
+      const text = await callGemini(prompt);
+      setAiResult(text.trim());
+      setStep("result");
     } catch (e: any) {
       console.error("AI error:", e);
       setErrorMsg(`AI error: ${e?.message || String(e)}. Using fallback reading.`);
-      setAiResult(generateLocalReading(selected, category, desc));
+      setAiResult(generateLocalReading(selected, category!, desc));
       setStep("result");
+    } finally {
       setAiLoading(false);
     }
   }
 
-  // UI ----------------------------------------------------------------
   if (showSafety) {
     return (
       <div className="relative w-full h-full p-4" style={{ color: "#f0f8ff" }}>
@@ -249,14 +222,14 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
 
   return (
     <div className="relative w-full h-full" style={{ fontFamily: "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial" }}>
-      {/* starry background */}
+      {/* background */}
       <div style={{
         position: "absolute", inset: 0, zIndex: 0,
         background: "radial-gradient(circle at 20% 10%, rgba(50,80,120,0.12), transparent 25%), linear-gradient(180deg,#030317 0%,#071224 60%)"
       }} />
 
       <div style={{ position: "relative", zIndex: 2, height: "100%", display: "flex", flexDirection: "column" }}>
-        {/* top */}
+        {/* header */}
         <div style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
           <button onClick={onBack} style={{ position: "absolute", left: 12, top: 12, borderRadius: 10, background: "rgba(255,255,255,0.02)", color: "#dbeafe", border: "1px solid rgba(255,255,255,0.04)", padding: 8 }}>
             <ChevronLeft />
@@ -265,7 +238,7 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
         </div>
 
         <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
-          {/* disclaimer band */}
+          {/* disclaimer */}
           <div style={{ marginBottom: 12, padding: 10, borderRadius: 12, background: "linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))", border: "1px solid rgba(255,255,255,0.04)", color: "#cfe8ff", fontSize: 13 }}>
             For reference only. Not professional advice.
           </div>
@@ -276,17 +249,17 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
             </div>
           )}
 
-          {/* ----- STEP: category ----- */}
+          {/* step: category */}
           {step === "category" && (
             <>
               <div style={{ color: "#bfe9ff", marginBottom: 8 }}>Choose category</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 18 }}>
                 {["Intimate relationship", "Career / study", "Interpersonal", "Self-growth"].map((c) => (
                   <button key={c} onClick={() => { setCategory(c); setStep("describe"); }}
-                    style={{
-                      padding: 12, borderRadius: 12, background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
-                      border: "1px solid rgba(255,255,255,0.04)", color: "#e6f7ff", fontWeight: 600
-                    }}>
+                          style={{
+                            padding: 12, borderRadius: 12, background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
+                            border: "1px solid rgba(255,255,255,0.04)", color: "#e6f7ff", fontWeight: 600
+                          }}>
                     {c}
                   </button>
                 ))}
@@ -297,24 +270,34 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
             </>
           )}
 
-          {/* ----- STEP: describe ----- */}
+          {/* step: describe */}
           {step === "describe" && (
             <>
               <div style={{ color: "#bfe9ff", marginBottom: 8 }}>Describe your question</div>
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 300))}
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value.slice(0, 300))}
                 placeholder="Type your question or concern..."
-                style={{ width: "100%", minHeight: 100, borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.02)", color: "#eaf8ff", border: "1px solid rgba(255,255,255,0.03)", marginBottom: 8 }} />
+                style={{ width: "100%", minHeight: 100, borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.02)", color: "#eaf8ff", border: "1px solid rgba(255,255,255,0.03)", marginBottom: 8 }}
+              />
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setStep("category")} style={{ padding: 10, borderRadius: 10, background: "transparent", color: "#9fbddb", border: "1px solid rgba(255,255,255,0.03)" }}>Back</button>
-                <button onClick={() => { if (!desc.trim()) { setErrorMsg("Please enter your question."); return; } setErrorMsg(null); setSelected([]); setStep("pick"); }}
-                  style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}>
+                <button
+                  onClick={() => {
+                    if (!desc.trim()) { setErrorMsg("Please enter your question."); return; }
+                    setErrorMsg(null);
+                    setSelected([]);
+                    setStep("pick");
+                  }}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}
+                >
                   Continue to choose cards
                 </button>
               </div>
             </>
           )}
 
-          {/* ----- STEP: pick ----- */}
+          {/* step: pick */}
           {step === "pick" && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -322,17 +305,15 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
                 <div style={{ color: "#9fbddb" }}>{selected.length}/{MAX}</div>
               </div>
 
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 10,
-                marginBottom: 16
-              }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
                 {cards.map((c) => {
                   const isSelected = selected.includes(c.id);
                   const disabled = !isSelected && selected.length >= MAX;
                   return (
-                    <button key={c.id} onClick={() => !disabled && toggleCard(c.id)} disabled={disabled}
+                    <button
+                      key={c.id}
+                      onClick={() => !disabled && toggleCard(c.id)}
+                      disabled={disabled}
                       style={{
                         aspectRatio: "0.7/1",
                         borderRadius: 12,
@@ -342,7 +323,8 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
                         transform: isSelected ? "scale(1.03)" : "none",
                         transition: "transform .18s ease, box-shadow .18s ease",
                         boxShadow: isSelected ? "0 10px 30px rgba(60,140,200,0.18)" : "none",
-                      }}>
+                      }}
+                    >
                       <img src={c.src} alt={c.alt} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: "saturate(95%) contrast(95%)" }} />
                       <div style={{ position: "absolute", right: 6, top: 6, width: 28, height: 28, borderRadius: 16, background: isSelected ? "linear-gradient(90deg,#7dd3fc,#6366f1)" : "rgba(0,0,0,0.35)", color: "white", display: "grid", placeItems: "center", fontWeight: 700 }}>
                         {isSelected ? (selected.indexOf(c.id) + 1) : "+"}
@@ -356,14 +338,18 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setStep("describe")} style={{ padding: 10, borderRadius: 10, background: "transparent", color: "#9fbddb", border: "1px solid rgba(255,255,255,0.03)" }}>Back</button>
                 <button onClick={resetAll} style={{ padding: 10, borderRadius: 10, background: "transparent", color: "#9fbddb", border: "1px solid rgba(255,255,255,0.03)" }}>Reset</button>
-                <button onClick={() => submitPick()} disabled={selected.length !== MAX || aiLoading} style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}>
+                <button
+                  onClick={() => submitPick()}
+                  disabled={selected.length !== MAX || aiLoading}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}
+                >
                   {aiLoading ? "Generating..." : "Reveal reading"}
                 </button>
               </div>
             </>
           )}
 
-          {/* ----- STEP: result ----- */}
+          {/* step: result */}
           {step === "result" && (
             <>
               <div style={{ marginBottom: 12 }}>
@@ -388,7 +374,13 @@ export default function TarotScreen({ onBack, onOpenSafety, forceSafety = false,
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { setStep("pick"); setAiResult(null); }} style={{ padding: 10, borderRadius: 10, background: "transparent", color: "#9fbddb", border: "1px solid rgba(255,255,255,0.03)" }}>Back</button>
                 <button onClick={resetAll} style={{ padding: 10, borderRadius: 10, background: "transparent", color: "#9fbddb", border: "1px solid rgba(255,255,255,0.03)" }}>New reading</button>
-                <button onClick={() => { if (!aiResult) return; navigator.clipboard?.writeText(`Category: ${category}\nQuestion: ${desc}\n\n${aiResult}`); }} style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}>
+                <button
+                  onClick={() => {
+                    if (!aiResult) return;
+                    navigator.clipboard?.writeText(`Category: ${category}\nQuestion: ${desc}\n\n${aiResult}`);
+                  }}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, background: "#6dd3ff", color: "#001017", fontWeight: 700 }}
+                >
                   Copy reading
                 </button>
               </div>
