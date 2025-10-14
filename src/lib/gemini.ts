@@ -21,8 +21,8 @@ if (!API_KEY) {
 const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
 
 // 先試 Pro，不行再退回 Flash
-const PRIMARY_MODEL = "gemini-1.5-pro-latest";
-const FALLBACK_MODEL = "gemini-1.5-flash";
+const PRIMARY_MODEL = "gemini-2.5-pro-latest";
+const FALLBACK_MODEL = "gemini-2.5-flash";
 
 function buildSystemPrompt(buddy?: BuddyInfo) {
   const persona =
