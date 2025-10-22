@@ -1,157 +1,178 @@
-VLINKS
-Track2 Student Lifestyle (Mental Health Support for students)
+Here’s a clean, structured README version for **VLINKS**, written in a professional and polished format — concise, easy to read, and suitable for submission or public GitHub display:
 
-VLINKS is a mindfulness-oriented progressive web application built with React + Vite + Supabase. It combines productivity and well-being tools into a single platform, designed to help users stay calm, focused, and connected.
+---
 
-✨ Core Features
-📰 Mindful Feed
-Share short reflections, photos, and thoughts.
-Scroll through posts from other users.
-Minimal, calming UI designed to reduce distraction.
-✅ To-Do Tasks & AI Assistant
-Create, edit, complete, and reset daily tasks.
+# VLINKS
 
-Assign priority levels (high, medium, low).
+### Track 2: Student Lifestyle – Mental Health Support for Students
 
-Tag energy level to better schedule tasks.
+**VLINKS** is a mindfulness-oriented progressive web app (PWA) built with **React**, **Vite**, and **Supabase**.
+It blends productivity and well-being tools into one calm digital space, helping students stay **calm, focused, and connected**.
 
-Integrated Pomodoro timer for deep focus work.
+---
 
-AI Task Assistant (Gemini-powered):
+## ✨ Core Features
 
-Generates subtasks, schedules, and motivational suggestions.
+### 📰 Mindful Feed
 
-Example: “Finish assignment” → AI provides 3-step action plan.
+* Share short reflections, photos, and thoughts.
+* Scroll through posts from other users in a minimalist, distraction-free interface.
 
-Voice Activation: “Hey VLINKS”
+### ✅ To-Do Tasks & AI Assistant
 
-Hands-free control with a hotword listener.
+* Create, edit, and reset daily tasks with priority levels.
+* Tag tasks with energy levels for better scheduling.
+* Integrated **Pomodoro timer** for focused sessions.
+* **Gemini-powered AI Assistant** generates subtasks, plans, and motivational tips.
 
-Add new tasks or ask the AI assistant via voice.
+  * Example: “Finish assignment” → AI provides a 3-step action plan.
+* **Voice Activation**: say “Hey VLINKS” to add or ask via speech.
 
-🎵 Music Player
-Play/pause, skip forward/back, seek inside tracks.
-Responsive UI designed for mobile.
-Safe-area padding so controls are not blocked by overlays.
-🔮 Tarot & Reflection
-Select a category (Career, Relationship, Interpersonal, Self-growth).
-Enter a personal question or concern.
-Pick 5 cards out of 24 unique images.
-AI Reading (Gemini API): 3-6 sentence warm reading + 2 practical suggestions + disclaimer.
-Fallback Reading: If Gemini quota is exhausted, local card meanings are combined into a short reflection.
-🛡️ Safety Net
-If user input contains sensitive/self-harm words, the app displays:
+### 🎵 Music Player
 
-A clear safety notice.
-Crisis hotline resources (e.g. Befrienders KL: 03-7627 2929).
-Users must acknowledge before returning to the app.
+* Play, pause, skip, and seek tracks.
+* Responsive design with safe-area padding for mobile usability.
 
-📅 Calendar & Gratitude Journal
-Daily mood tracker (😀🙂😐🙁😢).
-Gratitude journal: add multiple notes per day.
-Stored locally in browser (with option to sync to Supabase if enabled).
-📊 Dashboard & Insights
-View simple charts of productivity, mood, and gratitude over time.
-Designed for mindful reflection, not judgment.
-📱 Progressive Web App (PWA)
-Installable on desktop and mobile.
-Offline caching via service worker.
-App icon, splash screen, and standalone mode.
-🛠️ Tech Stack
-React 18 + TypeScript
-Vite bundler
-TailwindCSS styling
-Supabase (auth, database, storage)
-Google Gemini API (for AI Tarot readings)
-Vite Plugin PWA (offline & installable support)
-📦 Installation
-1. Clone the repository
-git clone https://github.com/jxon12/Meet-VLinks.git
-cd Meet-VLinks
-2. Install dependencies
-Requires Node.js v18+.
+### 🔮 Tarot & Reflection
 
-npm install
-This installs all dependencies:
+* Choose a category (Career, Relationship, Interpersonal, Self-growth).
+* Input a personal question and pick 5 cards.
+* **AI Reading (Gemini API)**: 3–6 sentence reflection + 2 practical suggestions + disclaimer.
+* **Fallback Reading**: combines local card meanings if API quota is reached.
 
-React, React DOM
-Vite + @vitejs/plugin-react
-vite-plugin-pwa
-Supabase JS SDK
-Tailwind, PostCSS, Autoprefixer
-3. Set environment variables
-Create a .env file in the project root:
+### 🛡️ Safety Net
 
-VITE_SUPABASE_URL=your-supabase-url
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-VITE_GEMINI_API_KEY=your-gemini-api-key
-Get Supabase URL & anon key from your Supabase project.
-Enable Google Gemini API in Google Cloud and copy the API key.
-4. Run in development
-npm run dev
-Open http://localhost:5173
+* Detects self-harm or sensitive input.
+* Displays safety notice and hotline (e.g. Befrienders KL: 03-7627 2929).
+* User must acknowledge before continuing.
 
-5. Build for production
-npm run build
-Output is in /dist.
+### 📅 Calendar & Gratitude Journal
 
-Preview locally:
+* Mood tracker (😀🙂😐🙁😢) and gratitude entries per day.
+* Data stored locally with Supabase sync option.
 
-npm run preview
-🌐 Deployment
-GitHub Pages
-Set vite.config.ts → base: '/Meet-VLinks/'.
-Push to repo, enable GitHub Pages → Deploy from branch /docs or /dist.
-Netlify (recommended)
-Build command: npm run build
+### 📊 Dashboard & Insights
 
-Publish directory: dist
+* Simple visual summary of productivity, mood, and gratitude.
+* Designed for reflection, not comparison.
 
-Add public/_redirects file with:
+### 📱 Progressive Web App (PWA)
 
-/* /index.html 200
-Vercel
-Build command: npm run build
-Output directory: dist
-📖 User Guide
-Sign in / Sign up
+* Installable on desktop and mobile.
+* Works offline via service worker caching.
+* Custom icon, splash screen, and standalone mode.
 
-Uses Supabase authentication.
-Mindful Feed
+---
 
-Post short reflections.
-Browse and like other posts.
-Tasks & Pomodoro
+## 🛠️ Tech Stack
 
-Create new tasks with priority.
-Start Pomodoro focus sessions.
-Reset tasks daily.
-Music
+* **React 18 + TypeScript**
+* **Vite** bundler
+* **TailwindCSS** styling
+* **Supabase** (Auth, Database, Storage)
+* **Google Gemini API** (AI Tarot)
+* **Vite Plugin PWA** (offline support)
 
-Open Music tab → play/pause/skip tracks.
-Works both on desktop and mobile.
-Tarot Reflection
+---
 
-Select category + enter your question.
-Pick 5 cards → AI reading (Gemini).
-Fallback to local meanings if API quota is reached.
-Safety Net
+## 📦 Installation
 
-Triggered if unsafe/self-harm words appear in input.
-Provides hotline info + requires acknowledgement.
-Calendar & Gratitude
+1. **Clone the repository**
 
-Track daily mood with emoji.
-Add gratitude notes per day.
-Stored locally (with option to sync).
-PWA
+   ```bash
+   git clone https://github.com/jxon12/Meet-VLinks.git  
+   cd Meet-VLinks
+   ```
 
-Install via browser (“Add to Home Screen”).
-Works offline with cached assets.
-📌 Notes for Judges
-Chrome / Edge recommended for best PWA experience.
-Gemini API must be configured for Tarot AI to function.
-Without Gemini API, fallback local reading still works.
-Supabase is optional: feed, posts, and tasks require backend; local-only mode still supports Tarot, Music, and Gratitude Journal.
-📄 License
-This project is provided for 2025 CodeNection Competition.
+2. **Install dependencies**
+   Requires Node.js v18+.
+
+   ```bash
+   npm install
+   ```
+
+3. **Set environment variables**
+   Create a `.env` file in the root directory:
+
+   ```
+   VITE_SUPABASE_URL=your-supabase-url  
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key  
+   VITE_GEMINI_API_KEY=your-gemini-api-key
+   ```
+
+   * Get Supabase keys from your project dashboard.
+   * Enable Google Gemini API in Google Cloud and copy the key.
+
+4. **Run in development**
+
+   ```bash
+   npm run dev
+   ```
+
+   Visit [http://localhost:5173](http://localhost:5173).
+
+5. **Build for production**
+
+   ```bash
+   npm run build
+   npm run preview
+   ```
+
+   Output will be generated in `/dist`.
+
+---
+
+## 🌐 Deployment
+
+### GitHub Pages
+
+* Set `vite.config.ts` → `base: '/Meet-VLinks/'`.
+* Push to repo and enable GitHub Pages.
+
+### Netlify (Recommended)
+
+* **Build command**: `npm run build`
+* **Publish directory**: `dist`
+* Add `public/_redirects`:
+
+  ```
+  /* /index.html 200
+  ```
+
+### Vercel
+
+* **Build command**: `npm run build`
+* **Output directory**: `dist`
+
+---
+
+## 📖 User Guide
+
+**Sign in / Sign up** – via Supabase Auth
+**Mindful Feed** – post and browse reflections
+**Tasks & Pomodoro** – organize and focus
+**Music** – background tracks while studying
+**Tarot Reflection** – personal AI readings
+**Safety Net** – mental health safeguards
+**Calendar & Gratitude** – track moods and moments
+**PWA** – add to home screen and use offline
+
+---
+
+## 📌 Notes for Judges
+
+* Best experience on Chrome or Edge.
+* Gemini API required for AI Tarot; fallback still works.
+* Supabase backend supports Feed, Tasks, and Posts.
+* Local-only mode still supports Tarot, Music, and Gratitude features.
+
+---
+
+## 📄 License
+
+Developed for the **2025 CodeNection Competition**.
+For educational and non-commercial use only.
+
+---
+
+Would you like me to tailor this README visually for **GitHub (with emoji headings and spacing)** or for **formal PDF submission (academic-style layout, no emojis, APA-friendly text)**?
