@@ -1,7 +1,3 @@
-Here’s a clean, structured README version for **VLINKS**, written in a professional and polished format — concise, easy to read, and suitable for submission or public GitHub display:
-
----
-
 # VLINKS
 
 ### Track 2: Student Lifestyle – Mental Health Support for Students
@@ -172,7 +168,3 @@ It blends productivity and well-being tools into one calm digital space, helping
 
 Developed for the **2025 CodeNection Competition**.
 For educational and non-commercial use only.
-
----
-
-Would you like me to tailor this README visually for **GitHub (with emoji headings and spacing)** or for **formal PDF submission (academic-style layout, no emojis, APA-friendly text)**?
