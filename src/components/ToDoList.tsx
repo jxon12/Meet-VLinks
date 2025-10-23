@@ -46,7 +46,7 @@ interface Course {
   id: string;
   title: string;
   room?: string;
-  day: number;   // 1~7 (Mon~Sun) — 前端字段
+  day: number;   // 1~7 (Mon~Sun)
   start: string; // "08:00"
   end: string;   // "10:00"
   color: string;
@@ -193,15 +193,13 @@ export default function ToDoList() {
     0
   );
 
-  // hourly distribution
   const hourly = Array.from({ length: 24 }, () => 0);
   completedToday.forEach((t) => {
     const h = new Date(t.completedAt!).getHours();
-    hourly[h] += t.estimatedTime || 30; // default 30min
+    hourly[h] += t.estimatedTime || 30;
   });
   const maxMin = Math.max(60, ...hourly);
 
-  // top tags
   const tagCount: Record<string, number> = {};
   completedToday.forEach((t) =>
     (t.tags || []).forEach((tag) => (tagCount[tag] = (tagCount[tag] || 0) + 1))
@@ -210,11 +208,10 @@ export default function ToDoList() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  /** ------- Calendar (Supabase, uses wday in DB) ------- */
+  /** ------- Calendar (Supabase) ------- */
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
 
-  // First load from Supabase (fallback seed if empty)
   useEffect(() => {
     (async () => {
       try {
@@ -232,14 +229,13 @@ export default function ToDoList() {
               id: r.id,
               title: r.title,
               room: r.room ?? "",
-              day: r.wday, // 映射到前端 day
+              day: r.wday,
               start: (r.start_time as string).slice(0, 5),
               end: (r.end_time as string).slice(0, 5),
               color: r.color ?? "#a2b6ff",
             }))
           );
         } else {
-          // first-run seed (也推到云端，便于演示)
           const seed: Course[] = [
             {
               id: rid(),
@@ -266,7 +262,7 @@ export default function ToDoList() {
               seed.map((c) => ({
                 title: c.title,
                 room: c.room || null,
-                wday: c.day, // << DB 字段
+                wday: c.day,
                 start_time: c.start + ":00",
                 end_time: c.end + ":00",
                 color: c.color,
@@ -315,14 +311,13 @@ export default function ToDoList() {
     setEditOpen(true);
   };
 
-  // SAVE (insert/update via upsert) with optimistic UI + rollback
   const saveCourse = async () => {
     if (!form.title.trim()) return;
 
     const payload: any = {
       title: form.title,
       room: form.room || null,
-      wday: form.day,                 // 用 DB 的 wday
+      wday: form.day,
       start_time: form.start + ":00",
       end_time: form.end + ":00",
       color: form.color || "#a2b6ff",
@@ -331,7 +326,6 @@ export default function ToDoList() {
 
     const rollback: Course[] = [...courses];
 
-    // optimistic
     if (editing) {
       setCourses((cs) =>
         cs.map((c) => (c.id === editing.id ? { ...form, id: editing.id } : c))
@@ -367,7 +361,6 @@ export default function ToDoList() {
           next[idx] = saved;
           return next;
         }
-        // 替换刚插入的临时行（用独特特征匹配）
         return cs.map((c) =>
           c.title === form.title && c.day === form.day && c.start === form.start ? saved : c
         );
@@ -382,7 +375,6 @@ export default function ToDoList() {
     }
   };
 
-  // DELETE (optimistic + rollback)
   const deleteCourse = async (id: string) => {
     const backup = [...courses];
     setCourses((cs) => cs.filter((c) => c.id !== id));
@@ -477,7 +469,7 @@ export default function ToDoList() {
     const data = await res.json();
     const textOut =
       data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ||
-      "(no response)";
+      "(no response)");
     return textOut;
   }
 
@@ -660,12 +652,85 @@ export default function ToDoList() {
           "radial-gradient(1200px 600px at 50% -10%, rgba(147,197,253,0.14), transparent 70%), linear-gradient(180deg, #070a12 0%, #0b172b 55%, #070a12 100%)",
       }}
     >
-      {/* soft blobs */}
-      <div className="absolute inset-0 pointer-events-none z-0">
-        <div className="absolute -top-20 left-1/3 w-96 h-96 rounded-full bg-cyan-300/10 blur-3xl" />
-        <div className="absolute bottom-10 right-1/4 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(800px_320px_at_50%_0%,rgba(180,210,255,0.08),transparent_70%)]" />
-      </div>
+      {/* Pomodoro modal */}
+      {pomoOpen && (
+        <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-[#0e1626] border border-white/15 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-lg font-semibold text-blue-50">Pomodoro</div>
+              <button
+                onClick={() => {
+                  setPomoOpen(false);
+                  setRunning(false);
+                  if (intervalRef.current) clearInterval(intervalRef.current);
+                }}
+                className="text-blue-200 hover:text-white"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-blue-200/85 text-sm mb-3 capitalize">
+              Phase: <span className="text-cyan-200 font-medium">{phase}</span>
+            </div>
+
+            <div className="text-5xl font-semibold text-white text-center tracking-widest mb-4">
+              {mmss(leftSec)}
+            </div>
+
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <button
+                onClick={() => setRunning((v) => !v)}
+                className="px-3 py-2 rounded-xl bg-[color:var(--brand)] text-black font-medium hover:brightness-110 active:scale-[.98] transition"
+              >
+                {running ? "Pause" : "Start"}
+              </button>
+              <button
+                onClick={() => {
+                  resetPomo();
+                }}
+                className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-blue-100 hover:bg-white/15 transition active:scale-[.98]"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <label className="text-xs text-blue-200/80">
+                Work
+                <input
+                  type="number"
+                  min={1}
+                  value={workMin}
+                  onChange={(e) => setWorkMin(Math.max(1, Number(e.target.value) || 1))}
+                  className="mt-1 w-full h-9 px-2 rounded bg-white/10 border border-white/15 text-white"
+                />
+              </label>
+              <label className="text-xs text-blue-200/80">
+                Break
+                <input
+                  type="number"
+                  min={1}
+                  value={breakMin}
+                  onChange={(e) => setBreakMin(Math.max(1, Number(e.target.value) || 1))}
+                  className="mt-1 w-full h-9 px-2 rounded bg-white/10 border border-white/15 text-white"
+                />
+              </label>
+              <label className="text-xs text-blue-200/80">
+                Rounds
+                <input
+                  type="number"
+                  min={1}
+                  value={rounds}
+                  onChange={(e) => setRounds(Math.max(1, Number(e.target.value) || 1))}
+                  className="mt-1 w-full h-9 px-2 rounded bg-white/10 border border-white/15 text-white"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* header */}
       <header className="sticky top-0 z-20 px-5 py-3 backdrop-blur bg-white/5 border-b border-white/10 flex items-center justify-between">
@@ -807,7 +872,7 @@ export default function ToDoList() {
               {tasks.filter((t) => !t.done).length === 0 && (
                 <div className="text-center py-10">
                   <div className="text-3xl">🐚</div>
-                  <div className="text-blue-100/90">All clear — add something above.</div>
+                  <div className="text-blue-100/90">All clear, add something above.</div>
                   <div className="text-blue-300/60 text-xs mt-1">
                     Try “Read chapter 3 #math 30min”
                   </div>
@@ -826,7 +891,6 @@ export default function ToDoList() {
                 </div>
               </div>
 
-              {/* summary */}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <div className="rounded-xl bg-white/6 border border-white/10 p-3">
                   <div className="text-xs text-blue-200/80">Tasks Completed</div>
@@ -840,9 +904,8 @@ export default function ToDoList() {
                 </div>
               </div>
 
-              {/* hourly bars */}
               <div className="mb-6">
-                <div className="text-xs text-blue-200/80 mb-2">Today • time distribution</div>
+                <div className="text-xs text-blue-200/80 mb-2">Today, time distribution</div>
                 <div className="flex items-end gap-1 h-28">
                   {hourly.map((v, i) => (
                     <div
@@ -865,7 +928,6 @@ export default function ToDoList() {
                 </div>
               </div>
 
-              {/* tags */}
               <div>
                 <div className="text-xs text-blue-200/80 mb-2">Top Tags</div>
                 {tagEntries.length === 0 && (
@@ -911,17 +973,15 @@ export default function ToDoList() {
                 <div className="text-xs text-blue-300/70 mb-2">Loading from cloud…</div>
               )}
 
-              {/* grid */}
               <div className="min-w-[820px]">
                 <div className="grid" style={{ gridTemplateColumns: `100px repeat(7, 1fr)` }}>
-                  {/* header row */}
                   <div />
                   {days.map((d) => (
                     <div key={d} className="px-2 py-1 text-center text-blue-100/90">
                       {d}
                     </div>
                   ))}
-                  {/* rows */}
+
                   {timeSlots.map((ts) => (
                     <React.Fragment key={ts}>
                       <div className="h-16 border border-white/10 text-xs text-blue-300/80 px-2 flex items-start pt-1">
@@ -936,7 +996,6 @@ export default function ToDoList() {
                             openNewCourse(dayIdx + 1, ts);
                           }}
                         >
-                          {/* courses overlapping this slot */}
                           {courses
                             .filter((c) => c.day === dayIdx + 1 && withinSlot(ts, c.start, c.end))
                             .map((c) => (
@@ -975,9 +1034,9 @@ export default function ToDoList() {
                                   <button
                                     className="px-2 py-0.5 rounded bg-white/10 border border-white/20"
                                     onClick={(e) => {
-                                        e.stopPropagation();
-                                        deleteCourse(c.id);
-                                      }}
+                                      e.stopPropagation();
+                                      deleteCourse(c.id);
+                                    }}
                                   >
                                     Delete
                                   </button>
@@ -991,7 +1050,6 @@ export default function ToDoList() {
                 </div>
               </div>
 
-              {/* editor modal */}
               {editOpen && (
                 <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
                   <div className="w-full max-w-md rounded-2xl bg-[#0e1626] border border-white/15 p-4">
@@ -1067,7 +1125,6 @@ export default function ToDoList() {
         {tab === "assistant" && (
           <section className="px-5 mt-6">
             <div className="rounded-2xl border border-[color:var(--panel-border)] bg-[color:var(--panel)] backdrop-blur-xl p-4 shadow-[var(--glow)] min-h-[60vh] flex flex-col">
-              {/* Header row */}
               <div className="flex items-center justify-between mb-3">
                 <div className="text-lg font-semibold text-blue-50 flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-[color:var(--brand)]" /> Assistant
@@ -1077,7 +1134,6 @@ export default function ToDoList() {
                 </div>
               </div>
 
-              {/* Tips chips */}
               <div className="flex flex-wrap gap-2 mb-3">
                 {[
                   "Help me plan what to study today (bulleted)",
@@ -1094,7 +1150,6 @@ export default function ToDoList() {
                 ))}
               </div>
 
-              {/* Messages */}
               <div className="flex-1 rounded-xl border border-white/10 bg-white/5 p-3 overflow-y-auto space-y-3">
                 {assistantMsgs.length === 0 && (
                   <div className="text-blue-200/80 text-sm">
@@ -1141,7 +1196,6 @@ export default function ToDoList() {
                 )}
               </div>
 
-              {/* Composer */}
               <div className="mt-3 flex items-center gap-2">
                 <label className="h-12 w-12 inline-flex items-center justify-center rounded-xl bg-white/8 border border-white/15 hover:bg-white/12 cursor-pointer active:scale-[.98] transition">
                   <input
@@ -1218,7 +1272,6 @@ export default function ToDoList() {
               <BarChart3 className="w-5 h-5 mx-auto" />
             </button>
 
-            {/* Pearl */}
             <button
               type="button"
               onClick={() => setVoiceOpen(true)}
@@ -1279,7 +1332,6 @@ export default function ToDoList() {
               {hasWebSpeech ? (listening ? "Listening…" : "Ready") : "Not supported"}
             </div>
 
-            {/* Wave / transcript */}
             <div className="rounded-2xl border border-white/12 bg-white/5 p-3 mb-3">
               <div className="h-10 flex items-center gap-1 overflow-hidden">
                 {Array.from({ length: 32 }).map((_, i) => (
@@ -1303,7 +1355,6 @@ export default function ToDoList() {
               </div>
             </div>
 
-            {/* Quick history (last 4) */}
             <div className="max-h-48 overflow-auto space-y-2 mb-3">
               {assistantMsgs.slice(-4).map((m) => (
                 <div
@@ -1319,7 +1370,6 @@ export default function ToDoList() {
               ))}
             </div>
 
-            {/* Controls */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <button
@@ -1432,7 +1482,7 @@ function offsetTop(slot: string, start: string) {
   const row = toMinutes(slot);
   const s = toMinutes(start);
   const ratio = Math.max(0, Math.min(1, (s - row) / 60));
-  return `${ratio * 64}px`; // row height 64px
+  return `${ratio * 64}px`;
 }
 function heightFrom(start: string, end: string) {
   const h = Math.max(30, (toMinutes(end) - toMinutes(start)) * (64 / 60));
