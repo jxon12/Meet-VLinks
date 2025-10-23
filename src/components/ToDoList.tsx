@@ -467,10 +467,10 @@ export default function ToDoList() {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    const textOut =
-      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ||
-      "(no response)");
-    return textOut;
+const textOut =
+  data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ||
+  "(no response)";
+return textOut;
   }
 
   async function sendAssistant() {
